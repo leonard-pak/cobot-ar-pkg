@@ -21,9 +21,8 @@ class ImageSubscriber(Node):
             10
         )
         self.timer = self.create_timer(0.5, self.timer_callback)
-        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
-        parameters = aruco.DetectorParameters()
-        self.detectorAruco = aruco.ArucoDetector(aruco_dict, parameters)
+        self.arucoDict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+        self.arucoParams = cv2.aruco.DetectorParameters_create()
 
     def timer_callback(self):
         msg = Point32()
@@ -34,6 +33,8 @@ class ImageSubscriber(Node):
 
     def listener_callback(self, msg):
         cv_image = self.bridge.compressed_imgmsg_to_cv2(msg)
+        (corners, ids, rejected) = cv2.aruco.detectMarkers(cv_image, self.arucoDict,
+          parameters=self.arucoParams)
         corners, ids, rejectedCandidates = self.detectorAruco.detectMarkers(cv_image)
         if ids is not None:
             self.get_logger().info(f'Aruco marker detected: {corners[0][0][0][0]} : {corners[0][0][0][1]}')
