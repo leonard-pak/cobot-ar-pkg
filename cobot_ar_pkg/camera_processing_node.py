@@ -37,3 +37,14 @@ class ImageSubscriber(Node):
         corners, ids, rejectedCandidates = self.detectorAruco.detectMarkers(cv_image)
         if ids is not None:
             self.get_logger().info(f'Aruco marker detected: {corners[0][0][0][0]} : {corners[0][0][0][1]}')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    image_subscriber = ImageSubscriber()
+    rclpy.spin(image_subscriber)
+    image_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
