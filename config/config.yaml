@@ -1,0 +1,8 @@
+camera_processing:
+    ros__parameters:
+        camera_sub_topic: "camera_ar"
+        info_pub_topic: "displaying_info"
+        rps: 10
+server_endpoint:
+    ros__parameters:
+        ROS_IP: "192.168.1.78"
