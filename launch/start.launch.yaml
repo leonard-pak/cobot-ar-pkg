@@ -4,7 +4,7 @@ launch:
           exec: "default_server_endpoint"
           name: "server_endpoint"
           param:
-              - from: "$(find-pkg-share cobot_ar_pkg)/config/start.config.yaml"
+              - from: "$(find-pkg-share cobot_ar_pkg)/config/config.yaml"
     - node:
           pkg: "cobot_ar_pkg"
           exec: "camera_processing"
