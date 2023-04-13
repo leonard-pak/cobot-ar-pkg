@@ -15,6 +15,8 @@ setup(
         (os.path.join('share', package_name, 'launch'),
          glob('launch/*launch.[pxy][yma]*')),
         (os.path.join('share', package_name, 'config'), glob('config/*config.yaml')),
+        (os.path.join('share', package_name, 'config'),
+         glob('config/hand_landmarker.task')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
