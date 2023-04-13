@@ -34,3 +34,13 @@ def Mask(image, points):
 
 def GetTimestamp() -> int:
     return round(time.time() * 1000)
+
+
+def CalcAngle(p1, p2, p3):
+    a = math.hypot(p2[0]-p3[0], p2[1]-p3[1])
+    b = math.hypot(p1[0]-p3[0], p1[1]-p3[1])
+    c = math.hypot(p1[0]-p2[0], p1[1]-p2[1])
+    try:
+        return math.acos((b**2-a**2-c**2)/(-2*a*c))
+    except ZeroDivisionError:
+        return 0.0

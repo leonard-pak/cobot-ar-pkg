@@ -1,4 +1,5 @@
 import math
+from rclpy import logging
 
 import mediapipe as mp
 from mediapipe import solutions
@@ -75,6 +76,7 @@ class IndexHandDetector(utils.Detector):
             num_hands=1
         )
         self.__landmarker = vision.HandLandmarker.create_from_options(options)
+        self.__shape = [0, 0]
 
     def __drawHandednessName(self, image, hand_landmarks, handedness):
         # Get the top left corner of the detected hand's bounding box.
@@ -118,8 +120,41 @@ class IndexHandDetector(utils.Detector):
             )
         return imgAnnotated
 
+    def __convertLandmarkToPoint(self, landmark):
+        return (int(landmark.x * self.__shape[1]), int(landmark.y * self.__shape[0]))
+
+    def __checkIndexGesture(self, handLanmarksList):
+        wrist = self.__convertLandmarkToPoint(
+            handLanmarksList[solutions.hands.HandLandmark.WRIST]
+        )
+        finger = (
+            self.__convertLandmarkToPoint(
+                handLanmarksList[5]
+            ),
+            self.__convertLandmarkToPoint(
+                handLanmarksList[8]
+            )
+        )
+        angle = utils.CalcAngle(wrist, finger[0], finger[1])
+        if angle < math.pi * 0.8:
+            return False
+        for fingerIdx in range(2, 5):
+            finger = (
+                self.__convertLandmarkToPoint(
+                    handLanmarksList[4 * fingerIdx + 1]
+                ),
+                self.__convertLandmarkToPoint(
+                    handLanmarksList[4 * fingerIdx + 4]
+                )
+            )
+            angle = utils.CalcAngle(wrist, finger[0], finger[1])
+            if angle > (math.pi * 0.8):
+                return False
+        return True
+
     def Detect(self, image):
         # image = cv2.flip(image, 1)
+        self.__shape = image.shape[:2]
         cv2.imshow('input', image)
         impMP = mp.Image(
             image_format=mp.ImageFormat.SRGB,
@@ -130,6 +165,10 @@ class IndexHandDetector(utils.Detector):
         if len(handLandmarkerResult.hand_landmarks) == 0:
             raise utils.NoDetectionException(
                 "IndexHandDetector dont detect any hand"
+            )
+        if not self.__checkIndexGesture(handLandmarkerResult.hand_landmarks[0]):
+            raise utils.NoDetectionException(
+                "IndexHandDetector dont detect index guest"
             )
         imgAnnotated = cv2.cvtColor(self.__makeAnnotatedImage(
             impMP.numpy_view(), handLandmarkerResult), cv2.COLOR_RGB2BGR)
