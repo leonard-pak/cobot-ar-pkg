@@ -28,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_processing = cobot_ar_pkg.camera_processing_node:main',
+            'camera = cobot_ar_pkg.camera_node:main'
         ],
     },
 )

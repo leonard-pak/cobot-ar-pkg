@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 import typing
 import time
 
+from rclpy import logging
+
 
 class NoDetectionException(Exception):
     """ Raise, if the detector can not find the target object in the image """
@@ -42,5 +44,6 @@ def CalcAngle(p1, p2, p3):
     c = math.hypot(p1[0]-p2[0], p1[1]-p2[1])
     try:
         return math.acos((b**2-a**2-c**2)/(-2*a*c))
-    except ZeroDivisionError:
+    except:
+        logging.get_logger('UTILS').warning(f'a: {a} b: {b} c: {c} ')
         return 0.0

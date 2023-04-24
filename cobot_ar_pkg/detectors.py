@@ -15,6 +15,48 @@ import numpy as np
 
 from cobot_ar_pkg import utils
 
+NoneType = type(None)
+
+
+class MatchDetector:
+    COLOR_ANNOTATED = (0, 0, 255)
+
+    def __init__(self) -> None:
+        self.__initORB()
+
+    def __initORB(self):
+        self.orb = cv2.ORB_create()
+        self.brMatcher = cv2.BFMatcher_create(
+            cv2.NORM_HAMMING, crossCheck=True)
+
+    def Detect(self, imageQuery, imageTrain):
+        queryKps, queryDesc = self.orb.detectAndCompute(imageQuery, None)
+        trainKps, trainDesc = self.orb.detectAndCompute(imageTrain, None)
+        if type(queryDesc) == NoneType or type(trainDesc) == NoneType:
+            raise utils.NoDetectionException("Images dont have descripters.")
+        matches = self.brMatcher.match(queryDesc, trainDesc)
+        matches = sorted(matches, key=lambda x: x.distance)
+        if len(matches) < 10:
+            raise utils.NoDetectionException(
+                'PictureInPictureDetector does not find the required number of key points'
+            )
+        queryPts = np.float32([
+            queryKps[m.queryIdx].pt for m in matches
+        ]).reshape(-1, 1, 2)
+        trainPts = np.float32([
+            trainKps[m.trainIdx].pt for m in matches
+        ]).reshape(-1, 1, 2)
+        retv, _ = cv2.findHomography(queryPts, trainPts, cv2.RANSAC)
+        h, w = imageQuery.shape[:2]
+        pts = np.float32([
+            [0, 0], [0, h-1], [w-1, h-1],
+            [w-1, 0]
+        ]).reshape(-1, 1, 2)
+        dst = np.int32(cv2.perspectiveTransform(pts, retv)).reshape((4, 2))
+        imageAnnotated = cv2.polylines(
+            imageTrain, [dst], True, self.COLOR_ANNOTATED, lineType=cv2.LINE_AA)
+        return imageAnnotated, dst
+
 
 class SimpleBlobDetector(utils.Detector):
     def __init__(self) -> None:
@@ -166,10 +208,10 @@ class IndexHandDetector(utils.Detector):
             raise utils.NoDetectionException(
                 "IndexHandDetector dont detect any hand"
             )
-        if not self.__checkIndexGesture(handLandmarkerResult.hand_landmarks[0]):
-            raise utils.NoDetectionException(
-                "IndexHandDetector dont detect index guest"
-            )
+        # if not self.__checkIndexGesture(handLandmarkerResult.hand_landmarks[0]):
+        #     raise utils.NoDetectionException(
+        #         "IndexHandDetector dont detect index guest"
+        #     )
         imgAnnotated = cv2.cvtColor(self.__makeAnnotatedImage(
             impMP.numpy_view(), handLandmarkerResult), cv2.COLOR_RGB2BGR)
         return imgAnnotated, (
@@ -233,13 +275,20 @@ class BlobDetectorV2(utils.Detector):
                 image
             )
         except utils.NoDetectionException:
-            return image
+            empty = np.zeros(
+                (image.shape[0], image.shape[1], 4), dtype=np.uint8
+            )
+            return empty
         points = self.__calculateWindowPoints(tip, dip)
         imgMasked = utils.Mask(image, points)
-        imgDetection = self.__blobDetector.Detect(imgMasked)
+        imgDetection, blobs = self.__blobDetector.Detect(imgMasked)
+
+        alpha = np.uint8((np.sum(imgDetection, axis=-1) > 0) * 255)
+        infoImage = np.dstack((imgDetection, alpha))
+
         cv2.imshow('hand', imgHandDetect)
         cv2.imshow('masked', imgMasked)
-        return imgDetection
+        return infoImage
 
 
 class ArucoDetector(utils.Detector):
