@@ -1,6 +1,6 @@
-camera_processing:
+frame_processing:
     ros__parameters:
-        mobile_frame_topic: "camera_ar"
+        mobile_frame_topic: "glasses_camera_frame"
         fixed_frame_topic: "fixed_camera_frame"
         info_frame_topic: "displaying_info"
         rps: 10
