@@ -1,8 +1,14 @@
 camera_processing:
     ros__parameters:
-        camera_sub_topic: "camera_ar"
-        info_pub_topic: "displaying_info"
+        mobile_frame_topic: "camera_ar"
+        fixed_frame_topic: "fixed_camera_frame"
+        info_frame_topic: "displaying_info"
         rps: 10
+fixed_camera:
+    ros__parameters:
+        fixed_camera_idx: 4
+        fixed_frame_topic: "fixed_camera_frame"
+        fps: 10
 server_endpoint:
     ros__parameters:
-        ROS_IP: "192.168.1.78"
+        ROS_IP: "192.168.1.72"

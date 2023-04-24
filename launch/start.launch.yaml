@@ -11,3 +11,9 @@ launch:
           name: "camera_processing"
           param:
               - from: "$(find-pkg-share cobot_ar_pkg)/config/config.yaml"
+    - node:
+          pkg: "cobot_ar_pkg"
+          exec: "camera"
+          name: "fixed_camera"
+          param:
+              - from: "$(find-pkg-share cobot_ar_pkg)/config/config.yaml"
