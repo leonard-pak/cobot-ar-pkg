@@ -27,7 +27,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'camera_processing = cobot_ar_pkg.camera_processing_node:main',
+            'frame_processing = cobot_ar_pkg.frame_processing_node:main',
             'camera = cobot_ar_pkg.camera_node:main'
         ],
     },

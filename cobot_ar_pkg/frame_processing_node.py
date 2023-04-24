@@ -10,7 +10,7 @@ from cobot_ar_pkg.utils import NoDetectionException
 
 class CameraProcessing(Node):
     def __init__(self):
-        super().__init__('camera_processing')
+        super().__init__('frame_processing')
         self.declare_parameters('', [
             ('mobile_frame_topic',),
             ('fixed_frame_topic',),

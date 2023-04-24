@@ -7,8 +7,8 @@ launch:
               - from: "$(find-pkg-share cobot_ar_pkg)/config/config.yaml"
     - node:
           pkg: "cobot_ar_pkg"
-          exec: "camera_processing"
-          name: "camera_processing"
+          exec: "frame_processing"
+          name: "frame_processing"
           param:
               - from: "$(find-pkg-share cobot_ar_pkg)/config/config.yaml"
     - node:
