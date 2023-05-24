@@ -58,7 +58,7 @@ class MatchDetector:
         return imageAnnotated, dst
 
 
-class SimpleBlobDetector(utils.Detector):
+class NearestBlobDetector():
     def __init__(self) -> None:
         self.__initBlob()
 
@@ -87,10 +87,21 @@ class SimpleBlobDetector(utils.Detector):
         params.minInertiaRatio = 0.55
         self.__blobDetector = cv2.SimpleBlobDetector_create(params)
 
-    def Detect(self, image):
+    def __findNearestPoint(self, pt0, keypoints):
+        def getLength(point): return utils.CalcLength(pt0, point)
+        idxNearestPoint = 0
+        minDist = getLength(keypoints[0].pt)
+        for idx in range(1, len(keypoints)):
+            if (dist := getLength(keypoints[idx].pt)) < minDist:
+                minDist = dist
+                idxNearestPoint = idx
+        return idxNearestPoint
+
+    def Detect(self, image, point):
         keypoints = self.__blobDetector.detect(
             cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         )
+
         imgDetection = np.zeros(
             (image.shape[0], image.shape[1], 3), dtype=np.uint8
         )
@@ -98,10 +109,22 @@ class SimpleBlobDetector(utils.Detector):
             imgDetection, keypoints, np.array([]), (0, 0, 255),
             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
         )
-        return imgDetection
+
+        if len(keypoints) == 0:
+            raise utils.NoDetectionException(
+                "NearestBlobDetector dont detect any blobs"
+            )
+
+        nearestKeypoint = keypoints[self.__findNearestPoint(point, keypoints)]
+        imgDetection = cv2.drawKeypoints(
+            imgDetection, [nearestKeypoint], np.array([]), (0, 255, 0),
+            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+        )
+        return imgDetection, nearestKeypoint.pt
+        # return imgDetection, keypoints[0].pt
 
 
-class IndexHandDetector(utils.Detector):
+class IndexHandDetector():
     MARGIN = 10  # pixels
     FONT_SIZE = 1
     FONT_THICKNESS = 1
@@ -197,7 +220,7 @@ class IndexHandDetector(utils.Detector):
     def Detect(self, image):
         # image = cv2.flip(image, 1)
         self.__shape = image.shape[:2]
-        cv2.imshow('input', image)
+        # cv2.imshow('input', image)
         impMP = mp.Image(
             image_format=mp.ImageFormat.SRGB,
             data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -208,10 +231,10 @@ class IndexHandDetector(utils.Detector):
             raise utils.NoDetectionException(
                 "IndexHandDetector dont detect any hand"
             )
-        # if not self.__checkIndexGesture(handLandmarkerResult.hand_landmarks[0]):
-        #     raise utils.NoDetectionException(
-        #         "IndexHandDetector dont detect index guest"
-        #     )
+        if not self.__checkIndexGesture(handLandmarkerResult.hand_landmarks[0]):
+            raise utils.NoDetectionException(
+                "IndexHandDetector dont detect index guest"
+            )
         imgAnnotated = cv2.cvtColor(self.__makeAnnotatedImage(
             impMP.numpy_view(), handLandmarkerResult), cv2.COLOR_RGB2BGR)
         return imgAnnotated, (
@@ -238,7 +261,7 @@ class IndexHandDetector(utils.Detector):
         ),
 
 
-class BlobDetectorV2(utils.Detector):
+class BlobDetectorV2():
     X_MARGIN = 50
     Y_MARGIN = 50
     WINDOW = (
@@ -249,7 +272,7 @@ class BlobDetectorV2(utils.Detector):
     )
 
     def __init__(self) -> None:
-        self.__blobDetector = SimpleBlobDetector()
+        self.__blobDetector = NearestBlobDetector()
         self.__indexHandDetector = IndexHandDetector()
 
     def __calculateWindowPoints(self, tip, dip):
@@ -270,28 +293,22 @@ class BlobDetectorV2(utils.Detector):
         return points
 
     def Detect(self, image):
-        try:
-            imgHandDetect, [tip, dip] = self.__indexHandDetector.Detect(
-                image
-            )
-        except utils.NoDetectionException:
-            empty = np.zeros(
-                (image.shape[0], image.shape[1], 4), dtype=np.uint8
-            )
-            return empty
+        imgHandDetect, [tip, dip] = self.__indexHandDetector.Detect(
+            image
+        )
+        cv2.imshow('hand', imgHandDetect)
         points = self.__calculateWindowPoints(tip, dip)
         imgMasked = utils.Mask(image, points)
-        imgDetection, blobs = self.__blobDetector.Detect(imgMasked)
+        cv2.imshow('masked', imgMasked)
+        imgDetection, nearestBlob = self.__blobDetector.Detect(imgMasked, tip)
 
         alpha = np.uint8((np.sum(imgDetection, axis=-1) > 0) * 255)
         infoImage = np.dstack((imgDetection, alpha))
 
-        cv2.imshow('hand', imgHandDetect)
-        cv2.imshow('masked', imgMasked)
-        return infoImage
+        return infoImage, nearestBlob
 
 
-class ArucoDetector(utils.Detector):
+class ArucoDetector():
     ''' Obsolete '''
 
     def __init__(self) -> None:
@@ -313,7 +330,7 @@ class ArucoDetector(utils.Detector):
         return infoImage
 
 
-class BlobDetector(utils.Detector):
+class BlobDetector():
     ''' Obsolete '''
 
     def __init__(self) -> None:

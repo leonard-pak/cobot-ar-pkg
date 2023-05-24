@@ -52,31 +52,53 @@ class CameraProcessing(Node):
         self.featureDetector = BlobDetectorV2()
         self.matchDetector = MatchDetector()
 
-    def __publishDetection(self):
-        imageWithDetection = self.featureDetector.Detect(self.frameMobile)
-        msg = self.bridge.cv2_to_compressed_imgmsg(imageWithDetection, 'png')
-        self.publisherInfoImage.publish(msg)
-        cv2.imshow('output', imageWithDetection)
+    def __findBlobAndPublish(self):
+        try:
+            # Find blob
+            imageWithDetection, blob = self.featureDetector.Detect(
+                self.frameMobile)
+            msg = self.bridge.cv2_to_compressed_imgmsg(
+                imageWithDetection, 'png')
+            self.publisherInfoImage.publish(msg)
+            cv2.imshow('displaying', imageWithDetection)
+            return blob
+        except NoDetectionException as ex:
+            self.get_logger().warning(str(ex))
+            empty = np.zeros(
+                (self.frameMobile.shape[0], self.frameMobile.shape[1], 4), dtype=np.uint8
+            )
+            msg = self.bridge.cv2_to_compressed_imgmsg(
+                empty, 'png')
+            self.publisherInfoImage.publish(msg)
+            return None
+
+    def __matchAndFixBlob(self, blob):
+        try:
+            # Matching
+            imageAnnotated, rectPoints = self.matchDetector.Detect(
+                self.frameMobile, self.frameFixed
+                # self.frameFixed, self.frameMobile
+            )
+            cv2.imshow('match', imageAnnotated)
+            coord = (blob[0], blob[1])
+            self.get_logger().error(f"Blob: x-{coord[0]} y-{coord[1]}")
+            self.get_logger().error(
+                f"Plane: x-{rectPoints[0][0]} y-{rectPoints[0][1]}"
+            )
+        except NoDetectionException as ex:
+            self.get_logger().warning(str(ex))
 
     def TimerCallback(self):
-        # self.__publishDetection()
-        try:
-            imageAnnotated, rectPoints = self.matchDetector.Detect(
-                # self.frameMobile, self.frameFixed
-                self.frameFixed, self.frameMobile
-            )
-        except NoDetectionException:
-            self.get_logger().warning("No annotated image")
-            return
-        cv2.imshow('orb', imageAnnotated)
+        if (blob := self.__findBlobAndPublish()) != None:
+            self.__matchAndFixBlob(blob)
         cv2.waitKey(1)
 
     def MobileFrameCallback(self, msg):
-        self.frameMobile = self.bridge.compressed_imgmsg_to_cv2(msg)
-        # self.frameMobile = cv2.rotate(
-        #     self.bridge.compressed_imgmsg_to_cv2(msg),
-        #     cv2.ROTATE_180
-        # )
+        # self.frameMobile = self.bridge.compressed_imgmsg_to_cv2(msg)
+        self.frameMobile = cv2.rotate(
+            self.bridge.compressed_imgmsg_to_cv2(msg),
+            cv2.ROTATE_180
+        )
         cv2.imshow('mobile_camera', self.frameMobile)
 
     def FixedFrameCallback(self, msg):

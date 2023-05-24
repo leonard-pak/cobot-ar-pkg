@@ -6,8 +6,8 @@ frame_processing:
         rps: 10
 fixed_camera:
     ros__parameters:
-        fixed_camera_idx: 4
-        fixed_frame_topic: "fixed_camera_frame"
+        camera_idx: 4
+        frame_topic: "fixed_camera_frame"
         fps: 10
 server_endpoint:
     ros__parameters:

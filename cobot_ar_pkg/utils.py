@@ -12,12 +12,6 @@ class NoDetectionException(Exception):
     """ Raise, if the detector can not find the target object in the image """
 
 
-class Detector(ABC):
-    @abstractmethod
-    def Detect(self, image) -> typing.Any:
-        pass
-
-
 def Rotate(theta: float, point):
     return (
         point[0] * math.cos(theta) - point[1] * math.sin(theta),
@@ -47,3 +41,7 @@ def CalcAngle(p1, p2, p3):
     except:
         logging.get_logger('UTILS').warning(f'a: {a} b: {b} c: {c} ')
         return 0.0
+
+
+def CalcLength(pt1, pt2):
+    return math.hypot(pt2[0] - pt1[0], pt2[1] - pt1[1])
