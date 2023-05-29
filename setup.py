@@ -28,7 +28,8 @@ setup(
     entry_points={
         'console_scripts': [
             'frame_processing = cobot_ar_pkg.frame_processing_node:main',
-            'camera = cobot_ar_pkg.camera_node:main'
+            'camera = cobot_ar_pkg.camera_node:main',
+            'calibration = cobot_ar_pkg.camera_calibration:main'
         ],
     },
 )
