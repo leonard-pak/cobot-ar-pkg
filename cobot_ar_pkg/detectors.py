@@ -12,10 +12,37 @@ import cv2
 from cv2 import aruco
 
 import numpy as np
+from numpy.linalg import inv
+import json
 
 from cobot_ar_pkg import utils
 
 NoneType = type(None)
+
+
+class PointTransformer:
+
+    def __init__(self, configDataPath) -> None:
+        self.__initTransform(configDataPath)
+
+    def __initTransform(self, configDataPath):
+        with open(configDataPath) as f:
+            data = json.load(f)
+            self.cameraMtx = np.array(data['undistor_camera_matrix'])
+            self.R, _ = cv2.Rodrigues(np.array(data['rvec']))
+            self.t = np.array(data['tvec'])
+            self.s = float(data['scale'])
+
+    def Transform(self, point, mtx):
+        npPoint = np.array([[[point[0], point[1]]]], dtype=np.float32)
+        newPoint = cv2.perspectiveTransform(npPoint, mtx)
+
+        uv1 = np.array([[newPoint[0][0][0], newPoint[0][0][1], 1]],
+                       dtype=np.float32).T
+        suv1 = self.s * uv1
+        xyzC = inv(self.cameraMtx).dot(suv1)
+        xyzW = inv(self.R).dot(xyzC - self.t)
+        return xyzW
 
 
 class MatchDetector:
@@ -55,7 +82,7 @@ class MatchDetector:
         dst = np.int32(cv2.perspectiveTransform(pts, retv)).reshape((4, 2))
         imageAnnotated = cv2.polylines(
             imageTrain, [dst], True, self.COLOR_ANNOTATED, lineType=cv2.LINE_AA)
-        return imageAnnotated, dst
+        return imageAnnotated, retv
 
 
 class NearestBlobDetector():

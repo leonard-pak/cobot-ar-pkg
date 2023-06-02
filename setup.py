@@ -17,6 +17,8 @@ setup(
         (os.path.join('share', package_name, 'config'), glob('config/*config.yaml')),
         (os.path.join('share', package_name, 'config'),
          glob('config/hand_landmarker.task')),
+        (os.path.join('share', package_name, 'config'),
+         glob('config/calibration_data_static.json')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

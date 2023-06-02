@@ -1,11 +1,14 @@
+import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage, Image
+from geometry_msgs.msg import Point
 import numpy as np
 from cv_bridge import CvBridge
 import cv2
-from cobot_ar_pkg.detectors import BlobDetectorV2, MatchDetector
+from cobot_ar_pkg.detectors import BlobDetectorV2, MatchDetector, PointTransformer
 from cobot_ar_pkg.utils import NoDetectionException
+from ament_index_python.packages import get_package_share_path
 
 
 class CameraProcessing(Node):
@@ -15,6 +18,7 @@ class CameraProcessing(Node):
             ('mobile_frame_topic',),
             ('fixed_frame_topic',),
             ('info_frame_topic',),
+            ('target_point_topic',),
             ('rps',)
         ])
         self.subscriberMobileFrame = self.create_subscription(
@@ -40,6 +44,13 @@ class CameraProcessing(Node):
                 .string_value,
             10
         )
+        self.publisherPoint = self.create_publisher(
+            Point,
+            self.get_parameter('target_point_topic')
+                .get_parameter_value()
+                .string_value,
+            10
+        )
         self.bridge = CvBridge()
         # Кадр с подвижной камеры на очках
         self.frameMobile = np.zeros((640, 360, 3), dtype=np.uint8)
@@ -51,6 +62,11 @@ class CameraProcessing(Node):
         )
         self.featureDetector = BlobDetectorV2()
         self.matchDetector = MatchDetector()
+        self.pointTransformer = PointTransformer(
+            get_package_share_path('cobot_ar_pkg') / 'config' / 'calibration_data_static.json')
+
+        self.lastSaveTime = time.monotonic()
+        self.lastSavePoints = {}
 
     def __findBlobAndPublish(self):
         try:
@@ -75,22 +91,29 @@ class CameraProcessing(Node):
     def __matchAndFixBlob(self, blob):
         try:
             # Matching
-            imageAnnotated, rectPoints = self.matchDetector.Detect(
+            imageAnnotated, projMtx = self.matchDetector.Detect(
                 self.frameMobile, self.frameFixed
                 # self.frameFixed, self.frameMobile
             )
             cv2.imshow('match', imageAnnotated)
-            coord = (blob[0], blob[1])
-            self.get_logger().error(f"Blob: x-{coord[0]} y-{coord[1]}")
-            self.get_logger().error(
-                f"Plane: x-{rectPoints[0][0]} y-{rectPoints[0][1]}"
-            )
+            x, y, z = self.pointTransformer.Transform(blob, projMtx)
+            return (x[0], y[0], z[0])
         except NoDetectionException as ex:
             self.get_logger().warning(str(ex))
 
+    def __pointInTimeWindow(self, point, timeWindow=2):
+        msg = Point()
+        msg.x = point[0]
+        msg.y = point[1]
+        msg.z = point[2]
+        self.publisherPoint.publish(msg)
+
     def TimerCallback(self):
-        if (blob := self.__findBlobAndPublish()) != None:
-            self.__matchAndFixBlob(blob)
+        if ((blob := self.__findBlobAndPublish()) != None) and ((point := self.__matchAndFixBlob(blob)) != None):
+            self.get_logger().error(
+                f'Blob at: x-{point[0]} y-{point[1]} z-{point[2]}'
+            )
+            self.__pointInTimeWindow(point)
         cv2.waitKey(1)
 
     def MobileFrameCallback(self, msg):

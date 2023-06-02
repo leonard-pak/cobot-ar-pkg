@@ -28,7 +28,8 @@ def ChessCalibration():
             data = json.load(f)
             cameraMtx = np.array(data['camera_matrix'])
             distCoeff = np.array(data['dist_coeff'])
-            return cameraMtx, distCoeff
+            undistorCameraMtx = np.array(data['undistor_camera_matrix'])
+            return cameraMtx, undistorCameraMtx, distCoeff
 
     images = glob.glob('images/*.png')
     # termination criteria
@@ -60,9 +61,12 @@ def ChessCalibration():
         return
     _, cameraMtx, distCoeff, _, _ = cv2.calibrateCamera(
         objpoints, imgpoints, gray.shape[::-1], None, None)
+    h, w = frame.shape[:2]
+    undistorCameraMtx, _ = cv2.getOptimalNewCameraMatrix(
+        cameraMtx, distCoeff, (w, h), 1, (w, h))
 
     print(f'Calibration {validImgs} images SUCCESS!')
-    return cameraMtx, distCoeff
+    return cameraMtx, undistorCameraMtx, distCoeff
 
 
 def DrawCenter(cameraMatrix):
@@ -119,7 +123,7 @@ def BlobDetect() -> list:
 
     cv2.imshow('blob', frame)
     cv2.waitKey(500)
-    cv2.destroyWindow('blob')
+    # cv2.destroyWindow('blob')
     kps = [point.pt for point in keypoints]
 
     return kps
@@ -176,17 +180,18 @@ def MainCalibration(worldPts, imagePts, cameraMtx, distCoeff):
     return rvec, tvec, meanScale
 
 
-def Calibrate():
-    cameraMtx, distCoeff = ChessCalibration()
-    imageCenter, worldCenter = DrawCenter(cameraMtx)
+def Calibrate(frame):
+    cameraMtx, undistorCameraMtx, distCoeff = ChessCalibration()
+    imageCenter, worldCenter = DrawCenter(undistorCameraMtx)
     imagePts = BlobDetect()
     worldPts = InputKpWorldCoords(imagePts, worldCenter)
     imagePts.append(imageCenter)
     worldPts.append(worldCenter)
     rvec, tvec, scale = MainCalibration(
-        worldPts, imagePts, cameraMtx, distCoeff)
+        worldPts, imagePts, undistorCameraMtx, distCoeff)
     data = {
         "camera_matrix": cameraMtx.tolist(),
+        "undistor_camera_matrix": undistorCameraMtx.tolist(),
         "dist_coeff": distCoeff.tolist(),
         "image_points": imagePts,
         "world_points": worldPts,
@@ -202,13 +207,30 @@ def Calibrate():
 def Check(frame):
     with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
         data = json.load(f)
-        cameraMtx = np.array(data['camera_matrix'])
+        cameraMtx = np.array(data['undistor_camera_matrix'])
         distCoeff = np.array(data['dist_coeff'])
         rvec = np.array(data['rvec'])
         tvec = np.array(data['tvec'])
     frame = cv2.drawFrameAxes(frame, cameraMtx, distCoeff,
                               rvec, tvec, 0.1)
     cv2.imshow('check', frame)
+
+
+def CheckCoords():
+    from numpy.linalg import inv
+    with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
+        data = json.load(f)
+        cameraMtx = np.array(data['undistor_camera_matrix'])
+        R, _ = cv2.Rodrigues(np.array(data['rvec']))
+        t = np.array(data['tvec'])
+        s = float(data['scale'])
+    kps = BlobDetect()
+    for kp in kps:
+        uv1 = np.array([[kp[0], kp[1], 1]], dtype=np.float32).T
+        suv1 = s * uv1
+        xyzC = inv(cameraMtx).dot(suv1)
+        xyzW = inv(R).dot(xyzC - t)
+        print(f'Find blob: x-{xyzW[0]} y-{xyzW[1]}')
 
 
 def CalcCoords(point, rvec, tvec):
@@ -255,21 +277,36 @@ def FindPose(frame, markerSize):
     return rvecs[0], tvecs[0]
 
 
+def RuntimeShow(frame):
+    # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # # Find the chess board corners
+    # ret, corners = cv2.findChessboardCorners(gray, (N, M), None)
+    # criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    # # If found, add object points, image points (after refining them)
+    # if ret == True:
+    #     corners2 = cv2.cornerSubPix(
+    #         gray, corners, (11, 11), (-1, -1), criteria)
+    #     cv2.drawChessboardCorners(frame, (N, M), corners2, ret)
+    cv2.imshow('camera', frame)
+
+
 cap = cv2.VideoCapture(4)
 while True:
     _, frame = cap.read()
-    cv2.imshow('Camera', frame)
-    # Check(frame)
+    RuntimeShow(frame.copy())
     c = cv2.waitKey(2)
     if c & 0xFF == ord('q'):
         break
     if c & 0xFF == ord('s'):
         MakeShot(frame)
     if c & 0xFF == ord('c'):
-        Calibrate()
+        Calibrate(frame)
     if c & 0xFF == ord('f'):
         res = FindPose(frame, 0.05)
         if type(res) != type(None):
             CalcCoords(None, res[0], res[1])
     if c & 0xFF == ord('b'):
         BlobDetect()
+    if c & 0xFF == ord('h'):
+        # Check(frame)
+        CheckCoords()

@@ -3,6 +3,7 @@ frame_processing:
         mobile_frame_topic: "glasses_camera_frame"
         fixed_frame_topic: "fixed_camera_frame"
         info_frame_topic: "displaying_info"
+        target_point_topic: "target_point"
         rps: 10
 fixed_camera:
     ros__parameters:
@@ -11,4 +12,4 @@ fixed_camera:
         fps: 10
 server_endpoint:
     ros__parameters:
-        ROS_IP: "192.168.1.72"
+        ROS_IP: "192.168.1.66"
