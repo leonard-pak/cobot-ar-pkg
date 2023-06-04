@@ -9,7 +9,6 @@ from mediapipe.tasks.python import vision
 from mediapipe.tasks import python
 
 import cv2
-from cv2 import aruco
 
 import numpy as np
 from numpy.linalg import inv
@@ -45,14 +44,59 @@ class PointTransformer:
         return xyzW
 
 
-class MatchDetector:
+class MatchDetectorSIFT:
+    COLOR_ANNOTATED = (0, 0, 255)
+
+    def __init__(self) -> None:
+        self.__initSIFT()
+
+    def __initSIFT(self):
+        self.sift = cv2.SIFT_create()
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        self.flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    def Detect(self, imageQuery, imageTrain):
+        queryKps, queryDesc = self.sift.detectAndCompute(imageQuery, None)
+        trainKps, trainDesc = self.sift.detectAndCompute(imageTrain, None)
+        if type(queryDesc) == NoneType or type(trainDesc) == NoneType:
+            raise utils.NoDetectionException("Images dont have descripters.")
+        matches = self.flann.knnMatch(queryDesc, trainDesc, k=2)
+        # matches = sorted(matches, key=lambda x: x.distance)
+        good = []
+        for m, n in matches:
+            if m.distance < 0.7*n.distance:
+                good.append(m)
+        if len(good) < 10:
+            raise utils.NoDetectionException(
+                'PictureInPictureDetector does not find the required number of key points'
+            )
+        queryPts = np.float32(
+            [queryKps[m.queryIdx].pt for m in good]).reshape(-1, 1, 2)
+        trainPts = np.float32(
+            [trainKps[m.trainIdx].pt for m in good]).reshape(-1, 1, 2)
+
+        retv, _ = cv2.findHomography(queryPts, trainPts, cv2.RANSAC)
+        h, w = imageQuery.shape[:2]
+        pts = np.float32([
+            [0, 0], [0, h-1], [w-1, h-1],
+            [w-1, 0]
+        ]).reshape(-1, 1, 2)
+        dst = np.int32(cv2.perspectiveTransform(pts, retv)).reshape((4, 2))
+        imageAnnotated = cv2.polylines(
+            imageTrain, [dst], True, self.COLOR_ANNOTATED, lineType=cv2.LINE_AA)
+        return imageAnnotated, retv
+
+
+class MatchDetectorORB:
     COLOR_ANNOTATED = (0, 0, 255)
 
     def __init__(self) -> None:
         self.__initORB()
 
     def __initORB(self):
-        self.orb = cv2.ORB_create()
+        self.orb = cv2.BRISK_create()
         self.brMatcher = cv2.BFMatcher_create(
             cv2.NORM_HAMMING, crossCheck=True)
 
@@ -288,7 +332,7 @@ class IndexHandDetector():
         ),
 
 
-class BlobDetectorV2():
+class BlobDetector():
     X_MARGIN = 50
     Y_MARGIN = 50
     WINDOW = (
@@ -333,85 +377,3 @@ class BlobDetectorV2():
         infoImage = np.dstack((imgDetection, alpha))
 
         return infoImage, nearestBlob
-
-
-class ArucoDetector():
-    ''' Obsolete '''
-
-    def __init__(self) -> None:
-        self.__initAruco(aruco.DICT_6X6_50)
-
-    def __initAruco(self, defDict):
-        aruco_dict = aruco.getPredefinedDictionary(defDict)
-        parameters = aruco.DetectorParameters()
-        self.__arucoDetector = aruco.ArucoDetector(aruco_dict, parameters)
-
-    def Detect(self, image):
-        corners, ids, rejectedCandidates = self.__arucoDetector.detectMarkers(
-            image)
-        res = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
-        if ids is not None:
-            aruco.drawDetectedMarkers(res, corners)
-        alpha = np.uint8((np.sum(res, axis=-1) > 0) * 255)
-        infoImage = np.dstack((res, alpha))
-        return infoImage
-
-
-class BlobDetector():
-    ''' Obsolete '''
-
-    def __init__(self) -> None:
-        self.__initBlob()
-        self.__initAruco(aruco.DICT_6X6_50)
-
-    def __initBlob(self):
-        blobParams = cv2.SimpleBlobDetector_Params()
-        blobParams.filterByArea = True
-        blobParams.minArea = 5
-        blobParams.filterByCircularity = True
-        blobParams.minCircularity = 0.5
-        blobParams.minDistBetweenBlobs = 5
-        self.__blobDetector = cv2.SimpleBlobDetector_create(blobParams)
-
-    def __initAruco(self, defDict):
-        aruco_dict = aruco.getPredefinedDictionary(defDict)
-        parameters = aruco.DetectorParameters()
-        self.__arucoDetector = aruco.ArucoDetector(aruco_dict, parameters)
-
-    def __findRectangle(self, arucoPoints):
-        a = []
-        b = []
-        if len(arucoPoints) != 0:
-            for bbox in arucoPoints:
-                if np.array(arucoPoints).shape[0] == 4:
-                    bbox = bbox[0]
-                for i in bbox:
-                    a.append(i[0])
-                    b.append(i[1])
-        a1 = int(min(a))
-        a2 = int(max(a))
-        b1 = int(min(b))
-        b2 = int(max(b))
-        return (a1, b1), (a2, b2)
-
-    def __mask(self, image, pt1, pt2):
-        mask = np.zeros(image.shape[:2], dtype='uint8')
-        cv2.rectangle(mask, pt1, pt2, 255, -1)
-        return cv2.bitwise_and(image, image, mask=mask)
-
-    def Detect(self, image):
-        arucofound, ids, rejected = self.__arucoDetector.detectMarkers(image)
-        if arucofound.__len__() != 4:
-            return image
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        point1, point2 = self.__findRectangle(arucofound)
-        gray = self.__mask(gray, point1, point2)
-        im = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 10)
-        keypoints = self.__blobDetector.detect(im)
-        res = np.zeros((im.shape[0], im.shape[1], 3), dtype=np.uint8)
-        im_with_keypoints = cv2.drawKeypoints(
-            res, keypoints, np.array([]), (0, 0, 255),
-            cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
-        )
-        return im_with_keypoints

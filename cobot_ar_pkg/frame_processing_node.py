@@ -6,7 +6,7 @@ from geometry_msgs.msg import Point
 import numpy as np
 from cv_bridge import CvBridge
 import cv2
-from cobot_ar_pkg.detectors import BlobDetectorV2, MatchDetector, PointTransformer
+from cobot_ar_pkg.detectors import BlobDetector, MatchDetectorORB, PointTransformer, MatchDetectorSIFT
 from cobot_ar_pkg.utils import NoDetectionException
 from ament_index_python.packages import get_package_share_path
 
@@ -60,8 +60,8 @@ class CameraProcessing(Node):
             1 / self.get_parameter('rps').get_parameter_value().integer_value,
             self.TimerCallback
         )
-        self.featureDetector = BlobDetectorV2()
-        self.matchDetector = MatchDetector()
+        self.featureDetector = BlobDetector()
+        self.matchDetector = MatchDetectorORB()
         self.pointTransformer = PointTransformer(
             get_package_share_path('cobot_ar_pkg') / 'config' / 'calibration_data_static.json')
 
@@ -88,12 +88,11 @@ class CameraProcessing(Node):
             self.publisherInfoImage.publish(msg)
             return None
 
-    def __matchAndFixBlob(self, blob):
+    def __matchAndTransformBlob(self, blob):
         try:
             # Matching
             imageAnnotated, projMtx = self.matchDetector.Detect(
                 self.frameMobile, self.frameFixed
-                # self.frameFixed, self.frameMobile
             )
             cv2.imshow('match', imageAnnotated)
             x, y, z = self.pointTransformer.Transform(blob, projMtx)
@@ -101,7 +100,7 @@ class CameraProcessing(Node):
         except NoDetectionException as ex:
             self.get_logger().warning(str(ex))
 
-    def __pointInTimeWindow(self, point, timeWindow=2):
+    def __pointPublish(self, point):
         msg = Point()
         msg.x = point[0]
         msg.y = point[1]
@@ -109,11 +108,13 @@ class CameraProcessing(Node):
         self.publisherPoint.publish(msg)
 
     def TimerCallback(self):
-        if ((blob := self.__findBlobAndPublish()) != None) and ((point := self.__matchAndFixBlob(blob)) != None):
+        t = time.monotonic()
+        if ((blob := self.__findBlobAndPublish()) != None) and ((point := self.__matchAndTransformBlob(blob)) != None):
             self.get_logger().error(
                 f'Blob at: x-{point[0]} y-{point[1]} z-{point[2]}'
             )
-            self.__pointInTimeWindow(point)
+            self.__pointPublish(point)
+            self.get_logger().info(f'Time: {time.monotonic() - t}')
         cv2.waitKey(1)
 
     def MobileFrameCallback(self, msg):
@@ -131,9 +132,9 @@ class CameraProcessing(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    image_subscriber = CameraProcessing()
-    rclpy.spin(image_subscriber)
-    image_subscriber.destroy_node()
+    cameraProcessingNode = CameraProcessing()
+    rclpy.spin(cameraProcessingNode)
+    cameraProcessingNode.destroy_node()
     rclpy.shutdown()
 
 
