@@ -1,18 +1,3 @@
-
-def easy_mean(f, s_k=0.5, max_k=0.9, d=1.5):
-    # Creating static variable
-    if not hasattr(easy_mean, "fit"):
-        easy_mean.fit = f
-
-    # Adaptive ratio
-    k = s_k if (abs(f - easy_mean.fit) < d) else max_k
-
-    # Calculation easy mean
-    easy_mean.fit += (f - easy_mean.fit) * k
-
-    return easy_mean.fit
-
-
 class MedianFilter:
     def __init__(self, windowSize=3) -> None:
         self.buffer = [0.0] * windowSize
@@ -33,5 +18,4 @@ class MedianFilter:
     def Filtering(self, signal):
         self.buffer = self.buffer[1:]
         self.buffer.append(signal)
-        # return easy_mean(self.getMedianElement(sorted(self.buffer)))
         return self.getMedianElement(sorted(self.buffer))

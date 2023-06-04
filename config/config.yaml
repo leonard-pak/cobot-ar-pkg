@@ -3,7 +3,7 @@ frame_processing:
         mobile_frame_topic: "glasses_camera_frame"
         fixed_frame_topic: "fixed_camera_frame"
         info_frame_topic: "displaying_info"
-        target_point_topic: "target_point"
+        raw_point_topic: "target_point"
         rps: 10
 fixed_camera:
     ros__parameters:
@@ -16,4 +16,5 @@ server_endpoint:
 point_processing:
     ros__parameters:
         raw_point_topic: "target_point"
-        target_point_topic: "new_point"
+        target_point_topic: "go_to_point"
+        window_time_sec: 2.0

@@ -18,7 +18,7 @@ class CameraProcessing(Node):
             ('mobile_frame_topic',),
             ('fixed_frame_topic',),
             ('info_frame_topic',),
-            ('target_point_topic',),
+            ('raw_point_topic',),
             ('rps',)
         ])
         self.subscriberMobileFrame = self.create_subscription(
@@ -46,7 +46,7 @@ class CameraProcessing(Node):
         )
         self.publisherPoint = self.create_publisher(
             Point,
-            self.get_parameter('target_point_topic')
+            self.get_parameter('raw_point_topic')
                 .get_parameter_value()
                 .string_value,
             10

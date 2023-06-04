@@ -13,6 +13,7 @@ class PointProcessing(Node):
         self.declare_parameters('', [
             ('raw_point_topic',),
             ('target_point_topic',),
+            ('window_time_sec',),
         ])
         self.subscriberRawPoint = self.create_subscription(
             Point,
@@ -30,8 +31,11 @@ class PointProcessing(Node):
             10
         )
         self.filterX = MedianFilter(10)
-        # self.filterY = MedianFilter(10)
+        self.filterY = MedianFilter(10)
         # self.filterZ = MedianFilter(5)
+
+        # self.windowTimeSec = self.get_parameter(
+        #     'target_point_topic').get_parameter_value().double_value
 
     def __publishTargetPoint(self, point):
         msg = Point()
@@ -42,9 +46,9 @@ class PointProcessing(Node):
 
     def __filterRawPoint(self, point):
         x = self.filterX.Filtering(point[0])
-        # y = self.filterY.Filtering(point[1])
+        y = self.filterY.Filtering(point[1])
         # z = self.filterZ.Filtering(point[2])
-        return (x, 0.0, 0.0)
+        return (x, y, 0.0)
 
     def RawPointCallback(self, point):
         filterPoint = self.__filterRawPoint((point.x, point.y, point.z))
