@@ -1,11 +1,9 @@
 import math
 import cv2
 import numpy as np
-from abc import ABC, abstractmethod
-import typing
 import time
 
-from rclpy import logging
+from rclpy.logging import get_logger
 
 
 class NoDetectionException(Exception):
@@ -13,6 +11,7 @@ class NoDetectionException(Exception):
 
 
 def Rotate(theta: float, point):
+    ''' Поворот точки на угол theta. '''
     return (
         point[0] * math.cos(theta) - point[1] * math.sin(theta),
         point[0] * math.sin(theta) + point[1] * math.cos(theta)
@@ -20,6 +19,7 @@ def Rotate(theta: float, point):
 
 
 def Mask(image, points):
+    ''' Наложение маски на изображение по точкам. '''
     mask = np.zeros(image.shape[: 2], dtype='uint8')
     cv2.drawContours(
         mask, [np.array(points)], -1,
@@ -29,17 +29,19 @@ def Mask(image, points):
 
 
 def GetTimestamp() -> int:
-    return round(time.time() * 1000)
+    ''' Возвращает монотонное время в секундах. '''
+    return round(time.monotonic() * 1000)
 
 
 def CalcAngle(p1, p2, p3):
+    ''' Расчитывает угол между 3-мя точками. '''
     a = math.hypot(p2[0]-p3[0], p2[1]-p3[1])
     b = math.hypot(p1[0]-p3[0], p1[1]-p3[1])
     c = math.hypot(p1[0]-p2[0], p1[1]-p2[1])
     try:
         return math.acos((b**2-a**2-c**2)/(-2*a*c))
     except:
-        logging.get_logger('UTILS').warning(f'a: {a} b: {b} c: {c} ')
+        get_logger('UTILS').warning(f'a: {a} b: {b} c: {c} ')
         return 0.0
 
 

@@ -6,6 +6,8 @@ from cv_bridge import CvBridge
 
 
 class CameraNode(Node):
+    ''' Нода для подключения к камере и публикации кадров с неё. '''
+
     def __init__(self) -> None:
         super().__init__('camera')
         self.declare_parameters('', [
@@ -36,6 +38,7 @@ class CameraNode(Node):
         self.cap.release()
 
     def TimerCallback(self):
+        ''' Callback функция для отправки кадров в сеть ROS. '''
         if not self.cap.isOpened():
             self.get_logger().error('Camera is not open.')
             return

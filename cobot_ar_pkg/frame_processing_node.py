@@ -6,12 +6,14 @@ from geometry_msgs.msg import Point
 import numpy as np
 from cv_bridge import CvBridge
 import cv2
-from cobot_ar_pkg.detectors import BlobDetector, MatchDetectorORB, PointTransformer, MatchDetectorSIFT
+from cobot_ar_pkg.detectors import BlobDetector, FeatureDetectorORB, FeatureDetectorBRISK, FeatureDetectorSIFT, PointTransformer
 from cobot_ar_pkg.utils import NoDetectionException
 from ament_index_python.packages import get_package_share_path
 
 
 class CameraProcessing(Node):
+    ''' Нода по обработки данных с камер. '''
+
     def __init__(self):
         super().__init__('frame_processing')
         self.declare_parameters('', [
@@ -61,14 +63,15 @@ class CameraProcessing(Node):
             self.TimerCallback
         )
         self.featureDetector = BlobDetector()
-        self.matchDetector = MatchDetectorORB()
+        self.matchDetector = FeatureDetectorBRISK()
         self.pointTransformer = PointTransformer(
             get_package_share_path('cobot_ar_pkg') / 'config' / 'calibration_data_static.json')
 
         self.lastSaveTime = time.monotonic()
         self.lastSavePoints = {}
 
-    def __findBlobAndPublish(self):
+    def __findBlobAndPublishInfoImage(self):
+        ''' Поиск ближайщего отвертия и отправка изображения с его выделением. '''
         try:
             # Find blob
             imageWithDetection, blob = self.featureDetector.Detect(
@@ -88,7 +91,8 @@ class CameraProcessing(Node):
             self.publisherInfoImage.publish(msg)
             return None
 
-    def __matchAndTransformBlob(self, blob):
+    def __matchImagesAndTransformBlob(self, blob):
+        ''' Сопоставление изображений и преобразование координат отвертия. '''
         try:
             # Matching
             imageAnnotated, projMtx = self.matchDetector.Detect(
@@ -101,6 +105,7 @@ class CameraProcessing(Node):
             self.get_logger().warning(str(ex))
 
     def __pointPublish(self, point):
+        ''' Отправка коордиат отвертия. '''
         msg = Point()
         msg.x = point[0]
         msg.y = point[1]
@@ -108,8 +113,9 @@ class CameraProcessing(Node):
         self.publisherPoint.publish(msg)
 
     def TimerCallback(self):
+        ''' Callback функция для обработки данных с камер. '''
         t = time.monotonic()
-        if ((blob := self.__findBlobAndPublish()) != None) and ((point := self.__matchAndTransformBlob(blob)) != None):
+        if ((blob := self.__findBlobAndPublishInfoImage()) != None) and ((point := self.__matchImagesAndTransformBlob(blob)) != None):
             self.get_logger().error(
                 f'Blob at: x-{point[0]} y-{point[1]} z-{point[2]}'
             )
@@ -118,6 +124,7 @@ class CameraProcessing(Node):
         cv2.waitKey(1)
 
     def MobileFrameCallback(self, msg):
+        ''' Callback функция для сохранения кадров с подвижной камеры. '''
         # self.frameMobile = self.bridge.compressed_imgmsg_to_cv2(msg)
         self.frameMobile = cv2.rotate(
             self.bridge.compressed_imgmsg_to_cv2(msg),
@@ -126,6 +133,7 @@ class CameraProcessing(Node):
         cv2.imshow('mobile_camera', self.frameMobile)
 
     def FixedFrameCallback(self, msg):
+        ''' Callback функция для сохранения кадров с неподвижной камеры. '''
         self.frameFixed = self.bridge.imgmsg_to_cv2(msg)
         cv2.imshow('fixed_camera', self.frameFixed)
 

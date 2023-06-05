@@ -1,5 +1,9 @@
+import cv2
 import math
-from rclpy import logging
+import json
+
+import numpy as np
+from numpy.linalg import inv
 
 import mediapipe as mp
 from mediapipe import solutions
@@ -8,23 +12,20 @@ from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks.python import vision
 from mediapipe.tasks import python
 
-import cv2
-
-import numpy as np
-from numpy.linalg import inv
-import json
-
 from cobot_ar_pkg import utils
+
 
 NoneType = type(None)
 
 
 class PointTransformer:
+    ''' Класс преобразования координат точки. '''
 
     def __init__(self, configDataPath) -> None:
         self.__initTransform(configDataPath)
 
     def __initTransform(self, configDataPath):
+        ''' Иницализация матриц преобразования.'''
         with open(configDataPath) as f:
             data = json.load(f)
             self.cameraMtx = np.array(data['undistor_camera_matrix'])
@@ -33,6 +34,11 @@ class PointTransformer:
             self.s = float(data['scale'])
 
     def Transform(self, point, mtx):
+        '''
+        Преобразует координаты точки в начале через перспективное преобразование по переданной матрице, а затем по инициализированным матрицам по формуле:
+
+        xyzW = R^(-1)*(A^(-1) * s * uv1 - t)
+        '''
         npPoint = np.array([[[point[0], point[1]]]], dtype=np.float32)
         newPoint = cv2.perspectiveTransform(npPoint, mtx)
 
@@ -44,13 +50,15 @@ class PointTransformer:
         return xyzW
 
 
-class MatchDetectorSIFT:
+class FeatureDetectorSIFT:
+    ''' Класс сопоставления изображений на основе SIFT алгоритма. '''
     COLOR_ANNOTATED = (0, 0, 255)
 
     def __init__(self) -> None:
         self.__initSIFT()
 
     def __initSIFT(self):
+        ''' Инициализация детектора и мэтчера. '''
         self.sift = cv2.SIFT_create()
         FLANN_INDEX_KDTREE = 1
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
@@ -58,15 +66,22 @@ class MatchDetectorSIFT:
         self.flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     def Detect(self, imageQuery, imageTrain):
+        '''
+        Сопоставление изображения imageTrain в изображении imageQuery. Возвращает изображение, на котором обозначен область сопоставляемого изображения в исходном, и матрица перспективного преобразования из train в query.
+
+        Raises
+        -----
+        utils.NoDetectionException
+            Если ключевые точки / дескрипторы не обнаружены или сопоставлено слишком мало ключевых точек.
+        '''
         queryKps, queryDesc = self.sift.detectAndCompute(imageQuery, None)
         trainKps, trainDesc = self.sift.detectAndCompute(imageTrain, None)
         if type(queryDesc) == NoneType or type(trainDesc) == NoneType:
             raise utils.NoDetectionException("Images dont have descripters.")
         matches = self.flann.knnMatch(queryDesc, trainDesc, k=2)
-        # matches = sorted(matches, key=lambda x: x.distance)
         good = []
         for m, n in matches:
-            if m.distance < 0.7*n.distance:
+            if m.distance < 0.7 * n.distance:
                 good.append(m)
         if len(good) < 10:
             raise utils.NoDetectionException(
@@ -89,23 +104,33 @@ class MatchDetectorSIFT:
         return imageAnnotated, retv
 
 
-class MatchDetectorORB:
+class FeatureDetectorBRISK:
+    ''' Класс сопоставления изображений на основе BRISK алгоритма. '''
     COLOR_ANNOTATED = (0, 0, 255)
 
     def __init__(self) -> None:
         self.__initORB()
 
     def __initORB(self):
-        self.orb = cv2.BRISK_create()
-        self.brMatcher = cv2.BFMatcher_create(
+        ''' Инициализация детектора и мэтчера. '''
+        self.brisk = cv2.BRISK_create()
+        self.bfMatcher = cv2.BFMatcher_create(
             cv2.NORM_HAMMING, crossCheck=True)
 
     def Detect(self, imageQuery, imageTrain):
-        queryKps, queryDesc = self.orb.detectAndCompute(imageQuery, None)
-        trainKps, trainDesc = self.orb.detectAndCompute(imageTrain, None)
+        '''
+        Сопоставление изображения imageTrain в изображении imageQuery. Возвращает изображение, на котором обозначен область сопоставляемого изображения в исходном, и матрица перспективного преобразования из train в query.
+
+        Raises
+        -----
+        utils.NoDetectionException
+            Если ключевые точки / дескрипторы не обнаружены или сопоставлено слишком мало ключевых точек.
+        '''
+        queryKps, queryDesc = self.brisk.detectAndCompute(imageQuery, None)
+        trainKps, trainDesc = self.brisk.detectAndCompute(imageTrain, None)
         if type(queryDesc) == NoneType or type(trainDesc) == NoneType:
             raise utils.NoDetectionException("Images dont have descripters.")
-        matches = self.brMatcher.match(queryDesc, trainDesc)
+        matches = self.bfMatcher.match(queryDesc, trainDesc)
         matches = sorted(matches, key=lambda x: x.distance)
         if len(matches) < 10:
             raise utils.NoDetectionException(
@@ -117,6 +142,58 @@ class MatchDetectorORB:
         trainPts = np.float32([
             trainKps[m.trainIdx].pt for m in matches
         ]).reshape(-1, 1, 2)
+
+        retv, _ = cv2.findHomography(queryPts, trainPts, cv2.RANSAC)
+        h, w = imageQuery.shape[:2]
+        pts = np.float32([
+            [0, 0], [0, h-1], [w-1, h-1],
+            [w-1, 0]
+        ]).reshape(-1, 1, 2)
+        dst = np.int32(cv2.perspectiveTransform(pts, retv)).reshape((4, 2))
+        imageAnnotated = cv2.polylines(
+            imageTrain, [dst], True, self.COLOR_ANNOTATED, lineType=cv2.LINE_AA)
+        return imageAnnotated, retv
+
+
+class FeatureDetectorORB:
+    ''' Класс сопоставления изображений на основе ORB алгоритма. '''
+    COLOR_ANNOTATED = (0, 0, 255)
+
+    def __init__(self) -> None:
+        self.__initORB()
+
+    def __initORB(self):
+        ''' Инициализация детектора и мэтчера. '''
+        self.orb = cv2.ORB_create()
+        self.bfMatcher = cv2.BFMatcher_create(
+            cv2.NORM_HAMMING, crossCheck=True)
+
+    def Detect(self, imageQuery, imageTrain):
+        '''
+        Сопоставление изображения imageTrain в изображении imageQuery. Возвращает изображение, на котором обозначен область сопоставляемого изображения в исходном, и матрица перспективного преобразования из train в query.
+
+        Raises
+        -----
+        utils.NoDetectionException
+            Если ключевые точки / дескрипторы не обнаружены или сопоставлено слишком мало ключевых точек.
+        '''
+        queryKps, queryDesc = self.orb.detectAndCompute(imageQuery, None)
+        trainKps, trainDesc = self.orb.detectAndCompute(imageTrain, None)
+        if type(queryDesc) == NoneType or type(trainDesc) == NoneType:
+            raise utils.NoDetectionException("Images dont have descripters.")
+        matches = self.bfMatcher.match(queryDesc, trainDesc)
+        matches = sorted(matches, key=lambda x: x.distance)
+        if len(matches) < 10:
+            raise utils.NoDetectionException(
+                'PictureInPictureDetector does not find the required number of key points'
+            )
+        queryPts = np.float32([
+            queryKps[m.queryIdx].pt for m in matches
+        ]).reshape(-1, 1, 2)
+        trainPts = np.float32([
+            trainKps[m.trainIdx].pt for m in matches
+        ]).reshape(-1, 1, 2)
+
         retv, _ = cv2.findHomography(queryPts, trainPts, cv2.RANSAC)
         h, w = imageQuery.shape[:2]
         pts = np.float32([
@@ -130,10 +207,13 @@ class MatchDetectorORB:
 
 
 class NearestBlobDetector():
+    ''' Класс обнаружения ближайшего отвертия. '''
+
     def __init__(self) -> None:
         self.__initBlob()
 
     def __initBlob(self):
+        ''' Инициализация параметров детектора. '''
         params = cv2.SimpleBlobDetector_Params()
         # Change thresholds
         params.minThreshold = 10
@@ -159,6 +239,7 @@ class NearestBlobDetector():
         self.__blobDetector = cv2.SimpleBlobDetector_create(params)
 
     def __findNearestPoint(self, pt0, keypoints):
+        ''' Поиск ближайшего отвертия к точке pt0. '''
         def getLength(point): return utils.CalcLength(pt0, point)
         idxNearestPoint = 0
         minDist = getLength(keypoints[0].pt)
@@ -169,6 +250,14 @@ class NearestBlobDetector():
         return idxNearestPoint
 
     def Detect(self, image, point):
+        '''
+        Обнаружение обнаружения ближайшего отвертия к точке на изобраении. Возвращает изображение, где выделены все обнаруженные отвретия (зеленным - ближайшее), и координаты ближайшей.
+
+        Raises
+        ------
+        utils.NoDetectionException
+            Если не обнаружено ни одно отвертие.
+        '''
         keypoints = self.__blobDetector.detect(
             cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         )
@@ -192,10 +281,12 @@ class NearestBlobDetector():
             cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
         )
         return imgDetection, nearestKeypoint.pt
-        # return imgDetection, keypoints[0].pt
 
 
 class IndexHandDetector():
+    '''
+    Класс обнаружения указательного жеста.
+    '''
     MARGIN = 10  # pixels
     FONT_SIZE = 1
     FONT_THICKNESS = 1
@@ -206,6 +297,7 @@ class IndexHandDetector():
         self.__initHandDetection()
 
     def __initHandDetection(self):
+        ''' Инициализация основных атрибутов '''
         options = vision.HandLandmarkerOptions(
             base_options=python.BaseOptions(model_asset_path=self.MODEL_PATH),
             running_mode=vision.RunningMode.VIDEO,
@@ -214,22 +306,8 @@ class IndexHandDetector():
         self.__landmarker = vision.HandLandmarker.create_from_options(options)
         self.__shape = [0, 0]
 
-    def __drawHandednessName(self, image, hand_landmarks, handedness):
-        # Get the top left corner of the detected hand's bounding box.
-        height, width, _ = image.shape
-        xCoordinates = [landmark.x for landmark in hand_landmarks]
-        yCoordinates = [landmark.y for landmark in hand_landmarks]
-        textX = int(min(xCoordinates) * width)
-        textY = int(min(yCoordinates) * height) - self.MARGIN
-        # Draw handedness (left or right hand) on the image.
-        cv2.putText(
-            image, f"{handedness[0].category_name}",
-            (textX, textY), cv2.FONT_HERSHEY_DUPLEX,
-            self.FONT_SIZE, self.HANDEDNESS_TEXT_COLOR,
-            self.FONT_THICKNESS, cv2.LINE_AA
-        )
-
     def __makeAnnotatedImage(self, image, detection_result: HandLandmarkerResult):
+        ''' Добавление обнаруженных ключевых точек кисте на изображение. Возвращает новое изображение. '''
         imgAnnotated = np.copy(image)
         handLandmarksList = detection_result.hand_landmarks
         handednessList = detection_result.handedness
@@ -250,16 +328,14 @@ class IndexHandDetector():
                 solutions.drawing_styles.get_default_hand_landmarks_style(),
                 solutions.drawing_styles.get_default_hand_connections_style()
             )
-            # Add left | right hint
-            self.__drawHandednessName(
-                imgAnnotated, handLandmarks, handedness
-            )
         return imgAnnotated
 
     def __convertLandmarkToPoint(self, landmark):
+        ''' Денормализация координат точек '''
         return (int(landmark.x * self.__shape[1]), int(landmark.y * self.__shape[0]))
 
     def __checkIndexGesture(self, handLanmarksList):
+        ''' Проверка, что обнаруженные ключевые точки кисти формируют указательный жест. '''
         wrist = self.__convertLandmarkToPoint(
             handLanmarksList[solutions.hands.HandLandmark.WRIST]
         )
@@ -289,9 +365,15 @@ class IndexHandDetector():
         return True
 
     def Detect(self, image):
-        # image = cv2.flip(image, 1)
+        '''
+        Обнаружение указательного жеста в изображении. Возвращает изображение, где выделен обнаруженный жест, и точки конца и середины указательного пальца.
+
+        Raises
+        ------
+        utils.NoDetectionException
+            Если кисть не обнаружена или жест неуказательный.
+        '''
         self.__shape = image.shape[:2]
-        # cv2.imshow('input', image)
         impMP = mp.Image(
             image_format=mp.ImageFormat.SRGB,
             data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -333,6 +415,10 @@ class IndexHandDetector():
 
 
 class BlobDetector():
+    '''
+        Класс обнаружение отвертий.
+        Обнаруживает ближайшее отвертсия в окне около указательного пальца.
+    '''
     X_MARGIN = 50
     Y_MARGIN = 50
     WINDOW = (
@@ -347,6 +433,16 @@ class BlobDetector():
         self.__indexHandDetector = IndexHandDetector()
 
     def __calculateWindowPoints(self, tip, dip):
+        '''
+        Рассчитывает окно, которое перпендикулярно расположенно к концу прямой, переданной в функцию как 2 точки.
+
+        Parameters
+        ----------
+        tip: tuple | list
+            конец прямой
+        dip: tuple | list
+            начало прямой
+        '''
         xBase = tip[0] - dip[0]
         yBase = tip[1] - dip[1]
         theta = math.atan2(yBase, xBase)
@@ -364,6 +460,9 @@ class BlobDetector():
         return points
 
     def Detect(self, image):
+        '''
+        Обнаружение отвертия в передаваемом кадре. Возвращает прозрачное изображение, на котором обознаено ближайшее отвертие отвертия
+        '''
         imgHandDetect, [tip, dip] = self.__indexHandDetector.Detect(
             image
         )

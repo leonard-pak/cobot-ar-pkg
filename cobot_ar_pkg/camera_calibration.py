@@ -15,6 +15,7 @@ RECALIB = False
 
 
 def MakeShot(frame):
+    ''' Сохрание кадра. '''
     if not (os.path.exists('images')):
         os.mkdir('images')
     timestamp = time.strftime('%H.%M.%S', time.gmtime(time.time()))
@@ -23,6 +24,7 @@ def MakeShot(frame):
 
 
 def ChessCalibration():
+    ''' Калибровка по шахматному рисунку. Возвращает матрицу камеры, матрицу камеры с учетом дисторсии и коэфициенты дистории. '''
     if not RECALIB:
         with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
             data = json.load(f)
@@ -70,6 +72,7 @@ def ChessCalibration():
 
 
 def DrawCenter(cameraMatrix):
+    ''' Обозначить центр изображения по внутренней матрици камеры. Возвращает координаты центра в плоскости изображения и в глобальных координатах. '''
     end = False
     imageCenter = [round(cameraMatrix[0, 2]), round(cameraMatrix[1, 2])]
     while not end:
@@ -87,6 +90,7 @@ def DrawCenter(cameraMatrix):
 
 
 def BlobDetect() -> list:
+    ''' Обнаружение точке. Возвращает список координат точке. '''
     _, frame = cap.read()
     params = cv2.SimpleBlobDetector_Params()
     # Change thresholds
@@ -130,6 +134,7 @@ def BlobDetect() -> list:
 
 
 def CalcWorldZ(center, point):
+    ''' Пересчет координаты Z для точки. Возвращает Z координату в глобальной системе отсчета. '''
     wd = math.hypot(point[0] - center[0], point[1] - center[1])
     cosA = (
         math.pow(point[2], 2) + math.pow(center[2], 2) - math.pow(wd, 2)
@@ -141,6 +146,7 @@ def CalcWorldZ(center, point):
 
 
 def InputKpWorldCoords(kps, center):
+    ''' Ввод рельных координат для каждой переданной точки. Возвращает список координат точке в глобальной системе отсчета. '''
     worldKps = []
     for kp in kps:
         _, frame = cap.read()
@@ -157,6 +163,7 @@ def InputKpWorldCoords(kps, center):
 
 
 def MainCalibration(worldPts, imagePts, cameraMtx, distCoeff):
+    ''' Калибровка камеры бля получения вектора поворота и смещения. Возвращает вектор поворота, смещения и коэфициент маштабирования. '''
     worldPts = np.array(worldPts, dtype=np.float32)
     imagePts = np.array(imagePts, dtype=np.float32)
     _, rvec, tvec = cv2.solvePnP(
@@ -181,6 +188,7 @@ def MainCalibration(worldPts, imagePts, cameraMtx, distCoeff):
 
 
 def Calibrate(frame):
+    ''' Процедура полной калиброки и сохранения данных. '''
     cameraMtx, undistorCameraMtx, distCoeff = ChessCalibration()
     imageCenter, worldCenter = DrawCenter(undistorCameraMtx)
     imagePts = BlobDetect()
@@ -204,19 +212,8 @@ def Calibrate(frame):
     print(f'Calibration SUCCESS!')
 
 
-def Check(frame):
-    with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
-        data = json.load(f)
-        cameraMtx = np.array(data['undistor_camera_matrix'])
-        distCoeff = np.array(data['dist_coeff'])
-        rvec = np.array(data['rvec'])
-        tvec = np.array(data['tvec'])
-    frame = cv2.drawFrameAxes(frame, cameraMtx, distCoeff,
-                              rvec, tvec, 0.1)
-    cv2.imshow('check', frame)
-
-
-def CheckCoords():
+def FindCoords():
+    ''' Поиск всех точке и расчет их координат. '''
     from numpy.linalg import inv
     with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
         data = json.load(f)
@@ -233,51 +230,8 @@ def CheckCoords():
         print(f'Find blob: x-{xyzW[0]} y-{xyzW[1]}')
 
 
-def CalcCoords(point, rvec, tvec):
-    R, _ = cv2.Rodrigues(rvec)
-    rotMat = np.array(R)
-    transMat = np.array(tvec)
-    cameraPose = (rotMat.T).dot(-transMat)
-    x, y, z = cameraPose
-    dst = np.linalg.norm(cameraPose)
-    print(f'x:{x} | y:{y} | z:{z} | dst:{dst}')
-
-
-def FindPose(frame, markerSize):
-    arucoDict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
-    parameters = aruco.DetectorParameters()
-    arucoDetector = aruco.ArucoDetector(arucoDict, parameters)
-    corners, ids, _ = arucoDetector.detectMarkers(frame)
-    if ids is None:
-        return None
-
-    with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
-        data = json.load(f)
-        cameraMatrix, distCoeffs = np.array(
-            data['camera_matrix']), np.array(data['dist_coeff'])
-
-    markerPoints = np.array([[-markerSize / 2, markerSize / 2, 0],
-                             [markerSize / 2, markerSize / 2, 0],
-                             [markerSize / 2, -markerSize / 2, 0],
-                             [-markerSize / 2, -markerSize / 2, 0]], dtype=np.float32)
-    rvecs = []
-    tvecs = []
-    for c in corners:
-        _, rvec, tvec = cv2.solvePnP(
-            markerPoints, c, cameraMatrix, distCoeffs)
-        rvecs.append(rvec)
-        tvecs.append(tvec)
-    aruco.drawDetectedMarkers(frame, corners)
-
-    for i in range(len(rvecs)):
-        frame = cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs,
-                                  rvecs[i], tvecs[i], 0.1)
-        print(f'ID: {ids[i]}\nrvec: {rvecs[i]}\ntvec: {tvecs[i]}\n')
-    cv2.imshow('find', frame)
-    return rvecs[0], tvecs[0]
-
-
 def RuntimeShow(frame):
+    ''' Отображение кадров в реальном времени. '''
     # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # # Find the chess board corners
     # ret, corners = cv2.findChessboardCorners(gray, (N, M), None)
@@ -301,12 +255,7 @@ while True:
         MakeShot(frame)
     if c & 0xFF == ord('c'):
         Calibrate(frame)
-    if c & 0xFF == ord('f'):
-        res = FindPose(frame, 0.05)
-        if type(res) != type(None):
-            CalcCoords(None, res[0], res[1])
     if c & 0xFF == ord('b'):
         BlobDetect()
-    if c & 0xFF == ord('h'):
-        # Check(frame)
-        CheckCoords()
+    if c & 0xFF == ord('f'):
+        FindCoords()
