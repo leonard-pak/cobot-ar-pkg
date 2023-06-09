@@ -30,7 +30,7 @@ def ChessCalibration():
             data = json.load(f)
             cameraMtx = np.array(data['camera_matrix'])
             distCoeff = np.array(data['dist_coeff'])
-            undistorCameraMtx = np.array(data['undistor_camera_matrix'])
+            undistorCameraMtx = np.array(data['new_camera_matrix'])
             return cameraMtx, undistorCameraMtx, distCoeff
 
     images = glob.glob('images/*.png')
@@ -199,7 +199,7 @@ def Calibrate(frame):
         worldPts, imagePts, undistorCameraMtx, distCoeff)
     data = {
         "camera_matrix": cameraMtx.tolist(),
-        "undistor_camera_matrix": undistorCameraMtx.tolist(),
+        "new_camera_matrix": undistorCameraMtx.tolist(),
         "dist_coeff": distCoeff.tolist(),
         "image_points": imagePts,
         "world_points": worldPts,
@@ -217,7 +217,7 @@ def FindCoords():
     from numpy.linalg import inv
     with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
         data = json.load(f)
-        cameraMtx = np.array(data['undistor_camera_matrix'])
+        cameraMtx = np.array(data['new_camera_matrix'])
         R, _ = cv2.Rodrigues(np.array(data['rvec']))
         t = np.array(data['tvec'])
         s = float(data['scale'])

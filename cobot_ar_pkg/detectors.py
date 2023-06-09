@@ -28,7 +28,7 @@ class PointTransformer:
         ''' Иницализация матриц преобразования.'''
         with open(configDataPath) as f:
             data = json.load(f)
-            self.cameraMtx = np.array(data['undistor_camera_matrix'])
+            self.A = np.array(data['new_camera_matrix'])
             self.R, _ = cv2.Rodrigues(np.array(data['rvec']))
             self.t = np.array(data['tvec'])
             self.s = float(data['scale'])
@@ -45,7 +45,7 @@ class PointTransformer:
         uv1 = np.array([[newPoint[0][0][0], newPoint[0][0][1], 1]],
                        dtype=np.float32).T
         suv1 = self.s * uv1
-        xyzC = inv(self.cameraMtx).dot(suv1)
+        xyzC = inv(self.A).dot(suv1)
         xyzW = inv(self.R).dot(xyzC - self.t)
         return xyzW
 

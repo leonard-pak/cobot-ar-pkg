@@ -47,3 +47,31 @@ def CalcAngle(p1, p2, p3):
 
 def CalcLength(pt1, pt2):
     return math.hypot(pt2[0] - pt1[0], pt2[1] - pt1[1])
+
+
+def averageTimeExecute(func):
+    import time
+    buffer = []
+
+    def wrapper(*args, **kwargs):
+        start = time.monotonic()
+        returnVal = func(*args, **kwargs)
+        end = time.monotonic()
+        buffer.append(end - start)
+        get_logger('UTILS').warning(f'Time: {np.average(buffer)}')
+        return returnVal
+    return wrapper
+
+
+def averageAbsoluteError(func):
+    buffer = []
+    realPoint = (0.463, 0.158)
+
+    def wrapper(*args, **kwargs):
+        returnVal = func(*args, **kwargs)
+        calcPoint = (returnVal[0], returnVal[1])
+        buffer.append(CalcLength(realPoint, calcPoint))
+        get_logger('UTILS').warning(
+            f'Error: {np.average(buffer)}')
+        return returnVal
+    return wrapper

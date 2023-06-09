@@ -67,9 +67,6 @@ class CameraProcessing(Node):
         self.pointTransformer = PointTransformer(
             get_package_share_path('cobot_ar_pkg') / 'config' / 'calibration_data_static.json')
 
-        self.lastSaveTime = time.monotonic()
-        self.lastSavePoints = {}
-
     def __findBlobAndPublishInfoImage(self):
         ''' Поиск ближайщего отвертия и отправка изображения с его выделением. '''
         try:
@@ -114,13 +111,11 @@ class CameraProcessing(Node):
 
     def TimerCallback(self):
         ''' Callback функция для обработки данных с камер. '''
-        t = time.monotonic()
         if ((blob := self.__findBlobAndPublishInfoImage()) != None) and ((point := self.__matchImagesAndTransformBlob(blob)) != None):
-            self.get_logger().error(
-                f'Blob at: x-{point[0]} y-{point[1]} z-{point[2]}'
-            )
+            # self.get_logger().error(
+            #     f'Blob at: x-{point[0]} y-{point[1]} z-{point[2]}'
+            # )
             self.__pointPublish(point)
-            self.get_logger().info(f'Time: {time.monotonic() - t}')
         cv2.waitKey(1)
 
     def MobileFrameCallback(self, msg):
