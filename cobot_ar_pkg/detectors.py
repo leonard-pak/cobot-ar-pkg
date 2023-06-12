@@ -12,7 +12,7 @@ from mediapipe.framework.formats import landmark_pb2
 from mediapipe.tasks.python import vision
 from mediapipe.tasks import python
 
-from cobot_ar_pkg import utils
+from cobot_ar_pkg.utils import utils
 
 
 NoneType = type(None)
