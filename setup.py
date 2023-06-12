@@ -7,18 +7,16 @@ package_name = 'cobot_ar_pkg'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=[package_name, package_name+'.utils'],
     data_files=[
         ('share/ament_index/resource_index/packages',
-            ['resource/' + package_name]),
+         ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'),
          glob('launch/*launch.[pxy][yma]*')),
         (os.path.join('share', package_name, 'config'), glob('config/*config.yaml')),
-        (os.path.join('share', package_name, 'config'),
-         glob('config/hand_landmarker.task')),
-        (os.path.join('share', package_name, 'config'),
-         glob('config/calibration_data_static.json')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.task')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.json')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -29,9 +27,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'frame_processing = cobot_ar_pkg.frame_processing_node:main',
+            'frames_processing = cobot_ar_pkg.frames_processing_node:main',
             'camera = cobot_ar_pkg.camera_node:main',
-            'calibration = cobot_ar_pkg.camera_calibration:main',
+            'camera_calibration = cobot_ar_pkg.camera_calibration_node:main',
             'point_processing = cobot_ar_pkg.point_processing_node:main'
         ],
     },
