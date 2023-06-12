@@ -31,9 +31,9 @@ class PointProcessing(Node):
                 .string_value,
             10
         )
-        self.filterX = MedianFilter(9)
-        self.filterY = MedianFilter(9)
-        # self.filterZ = MedianFilter(5)
+        self.filterX = MedianFilter(11)
+        self.filterY = MedianFilter(11)
+        # self.filterZ = MedianFilter(11)
 
     def __publishTargetPoint(self, point):
         ''' Публикация обработанной точки. '''
