@@ -19,6 +19,7 @@ class PointProcessing(Node):
             ('go_to_point_service',),
             ('window_time_sec',),
             ('rps',),
+            ('max_error_meters',),
         ])
         self.subscriberRawPoint = self.create_subscription(
             Point,
@@ -52,18 +53,25 @@ class PointProcessing(Node):
 
         self.filterX = MedianFilter(11)
         self.filterY = MedianFilter(11)
+
         self.point = None
         self.lastTimestamp = time.monotonic()
         self.lastPointstamp = (0.0, 0.0)
+        self.timeWindow = self.get_parameter(
+            'window_time_sec'
+        ).get_parameter_value().double_value
+        self.maxError = self.get_parameter(
+            'max_error_meters'
+        ).get_parameter_value().double_value
 
     def Callback(self):
         if self.point == None:
             return
         now = time.monotonic()
-        if CalcLength(self.point, self.lastPointstamp) >= 0.01:
+        if CalcLength(self.point, self.lastPointstamp) >= self.maxError:
             self.lastTimestamp = now
             self.lastPointstamp = self.point
-        elif now - self.lastTimestamp > 3.0:
+        elif now - self.lastTimestamp > self.timeWindow:
             self.__publishTargetPoint(self.lastPointstamp)
             self.lastTimestamp = now
             self.lastPointstamp = self.point

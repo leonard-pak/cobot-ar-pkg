@@ -5,7 +5,6 @@
         info_frame_topic: "displaying_info"
         raw_point_topic: "target_point"
         rps: 10
-        go_to_point_service: "go_to_point"
 fixed_camera:
     ros__parameters:
         camera_idx: 4
@@ -18,3 +17,8 @@ camera_calibration:
         save_conf_postfix: "_static"
         images_dir: "images/test"
         is_compressed: False
+point_processing:
+    ros__parameters:
+        go_to_point_service: "go_to_point"
+        max_error_meters: 0.01
+        window_time_sec: 1.5
