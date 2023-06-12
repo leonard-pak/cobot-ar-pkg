@@ -5,9 +5,11 @@ from geometry_msgs.msg import Point
 import numpy as np
 from cv_bridge import CvBridge
 import cv2
-from cobot_ar_pkg.detectors import BlobDetector, FeatureDetectorORB, FeatureDetectorBRISK, FeatureDetectorSIFT, PointTransformer
+from cobot_ar_pkg.utils.detectors.blob import NearestBlobDetector
+from cobot_ar_pkg.utils.detectors.gesture import IndexHandDetector
+from cobot_ar_pkg.utils.detectors.overlap import FeatureDetectorORB, FeatureDetectorBRISK, FeatureDetectorSIFT
 from cobot_ar_pkg.utils.utils import NoDetectionException
-from cobot_ar_pkg.utils.undistort import UndistortImage
+from cobot_ar_pkg.utils.functionals import BuildUndistortImage, BuildPointTransformer, BuildMaskDetectionWindowInImage
 from ament_index_python.packages import get_package_share_path
 
 
@@ -53,37 +55,55 @@ class FramesProcessing(Node):
                 .string_value,
             10
         )
+        self.timer = self.create_timer(
+            1 / self.get_parameter('rps').get_parameter_value().integer_value,
+            self.TimerCallback
+        )
         self.bridge = CvBridge()
         # Кадр с подвижной камеры на очках
         self.hmCamFrame = np.zeros((640, 360, 3), dtype=np.uint8)
         # Кадр с фиксорованной камеры в помещении
         self.fixedCamFrame = np.zeros((640, 360, 3), dtype=np.uint8)
-        self.timer = self.create_timer(
-            1 / self.get_parameter('rps').get_parameter_value().integer_value,
-            self.TimerCallback
-        )
-        self.featureDetector = BlobDetector()
-        self.matchDetector = FeatureDetectorBRISK()
-        self.pointTransformer = PointTransformer(
+
+        self.indexHandDetector = IndexHandDetector()
+        self.__maskDetectionWindow = BuildMaskDetectionWindowInImage()
+        self.blobDetector = NearestBlobDetector()
+
+        self.overlapDetector = FeatureDetectorBRISK()
+        self.__pointTransformer = BuildPointTransformer(
             get_package_share_path('cobot_ar_pkg') /
             'config' / 'calibration_data_static.json'
         )
 
-        self.fixedFrameUndistort = UndistortImage(
+        self.__fixedFrameUndistort = BuildUndistortImage(
             get_package_share_path('cobot_ar_pkg') /
             'config' / 'calibration_data_static.json'
         )
-        self.hmFrameUndistort = UndistortImage(
+        self.__hmFrameUndistort = BuildUndistortImage(
             get_package_share_path('cobot_ar_pkg') /
             'config' / 'calibration_data_hd.json'
         )
+
+    def __fullBlobDetection(self, image):
+        '''
+        Обнаружение отвертия в передаваемом кадре. Возвращает прозрачное изображение, на котором обознаено ближайшее отвертие отвертия
+        '''
+        imgHandDetect, [tip, dip] = self.indexHandDetector.Detect(image)
+        cv2.imshow('hand', imgHandDetect)
+        imgMasked = self.__maskDetectionWindow(tip, dip, image)
+        cv2.imshow('masked', imgMasked)
+        imgDetection, nearestBlob = self.blobDetector.Detect(imgMasked, tip)
+
+        alpha = np.uint8((np.sum(imgDetection, axis=-1) > 0) * 255)
+        infoImage = np.dstack((imgDetection, alpha))
+
+        return infoImage, nearestBlob
 
     def __findBlobAndPublishInfoImage(self, mobileFrame):
         ''' Поиск ближайщего отвертия и отправка изображения с его выделением. '''
         try:
             # Find blob
-            imageWithDetection, blob = self.featureDetector.Detect(
-                mobileFrame)
+            imageWithDetection, blob = self.__fullBlobDetection(mobileFrame)
             msg = self.bridge.cv2_to_compressed_imgmsg(
                 imageWithDetection, 'png')
             # Publish
@@ -104,12 +124,12 @@ class FramesProcessing(Node):
         ''' Совмещение изображений и преобразование координат отвертия. '''
         try:
             # Matching
-            imageAnnotated, projMtx = self.matchDetector.Detect(
+            imageAnnotated, projMtx = self.overlapDetector.Detect(
                 mobileFrame, fixedFrame
             )
             cv2.imshow('match', imageAnnotated)
             # Transform
-            x, y, z = self.pointTransformer.Transform(blob, projMtx)
+            x, y, z = self.__pointTransformer(blob, projMtx)
             return (x[0], y[0], z[0])
         except NoDetectionException as ex:
             self.get_logger().warning(str(ex))
@@ -125,8 +145,8 @@ class FramesProcessing(Node):
     def TimerCallback(self):
         ''' Callback функция для обработки данных с камер. '''
         # Undistort
-        undistHmFrame = self.hmFrameUndistort.Undistort(self.hmCamFrame)
-        undistFixFrame = self.fixedFrameUndistort.Undistort(self.fixedCamFrame)
+        undistHmFrame = self.__hmFrameUndistort(self.hmCamFrame)
+        undistFixFrame = self.__fixedFrameUndistort(self.fixedCamFrame)
         # Processing
         if (blob := self.__findBlobAndPublishInfoImage(undistHmFrame)) != None:
             if (point := self.__matchImagesAndTransformBlob(blob, undistFixFrame, undistHmFrame)) != None:

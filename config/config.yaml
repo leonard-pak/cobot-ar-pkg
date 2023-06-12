@@ -5,12 +5,16 @@
         info_frame_topic: "displaying_info"
         raw_point_topic: "target_point"
         rps: 10
-        target_point_topic: "go_to_point"
+        go_to_point_service: "go_to_point"
 fixed_camera:
     ros__parameters:
         camera_idx: 4
         frame_topic: "fixed_camera_frame"
         fps: 10
-server_endpoint:
+camera_calibration:
     ros__parameters:
-        ROS_IP: "192.168.1.66"
+        image_topic: "fixed_camera_frame"
+        save_conf_prefix: "src/cobot-ar-pkg/config/"
+        save_conf_postfix: "_static"
+        images_dir: "images/test"
+        is_compressed: False

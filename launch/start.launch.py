@@ -27,10 +27,10 @@ def generate_launch_description():
         parameters=[config]
     )
 
-    frameProcessing = Node(
+    framesProcessing = Node(
         package="cobot_ar_pkg",
-        executable="frame_processing",
-        name="frame_processing",
+        executable="frames_processing",
+        name="frames_processing",
         output="screen",
         parameters=[config]
     )
@@ -54,7 +54,7 @@ def generate_launch_description():
     return LaunchDescription([
         # unityEndpoint,
         # calibration,
-        frameProcessing,
+        framesProcessing,
         pointProcessing,
         # fixedCamera,
     ])

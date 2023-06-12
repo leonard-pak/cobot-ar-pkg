@@ -1,9 +1,12 @@
-from typing import List
+import time
+from typing import List, Tuple
+
+from cobot_ar_pkg.utils.utils import CalcLength
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
-
-from cobot_ar_pkg.filters import MedianFilter
+from cobot_ar_pkg.utils.filters import MedianFilter
+# from manipulator_pkg.srv import GoToPoint
 
 
 class PointProcessing(Node):
@@ -13,8 +16,9 @@ class PointProcessing(Node):
         super().__init__('point_processing')
         self.declare_parameters('', [
             ('raw_point_topic',),
-            ('target_point_topic',),
+            ('go_to_point_service',),
             ('window_time_sec',),
+            ('rps',),
         ])
         self.subscriberRawPoint = self.create_subscription(
             Point,
@@ -26,34 +30,64 @@ class PointProcessing(Node):
         )
         self.publisherTargetPoint = self.create_publisher(
             Point,
-            self.get_parameter('target_point_topic')
+            self.get_parameter('go_to_point_service')
             .get_parameter_value()
                 .string_value,
             10
         )
+        # self.goToPointClient = self.create_client(
+        #     GoToPoint,
+        #     self.get_parameter('go_to_point_service')
+        #     .get_parameter_value()
+        #     .string_value
+        # )
+        # while not self.goToPointClient.wait_for_service(timeout_sec=1.0):
+        #     self.get_logger().info('service not available, waiting again...')
+        # self.req = GoToPoint.Request()
+
+        self.timer = self.create_timer(
+            1 / self.get_parameter('rps').get_parameter_value().integer_value,
+            self.Callback
+        )
+
         self.filterX = MedianFilter(11)
         self.filterY = MedianFilter(11)
-        # self.filterZ = MedianFilter(11)
+        self.point = None
+        self.lastTimestamp = time.monotonic()
+        self.lastPointstamp = (0.0, 0.0)
+
+    def Callback(self):
+        if self.point == None:
+            return
+        now = time.monotonic()
+        if CalcLength(self.point, self.lastPointstamp) >= 0.01:
+            self.lastTimestamp = now
+            self.lastPointstamp = self.point
+        elif now - self.lastTimestamp > 3.0:
+            self.__publishTargetPoint(self.lastPointstamp)
+            self.lastTimestamp = now
+            self.lastPointstamp = self.point
+        self.point = None
 
     def __publishTargetPoint(self, point):
         ''' Публикация обработанной точки. '''
         msg = Point()
         msg.x = point[0]
         msg.y = point[1]
-        msg.z = point[2]
         self.publisherTargetPoint.publish(msg)
+        # self.req.target = msg
+        # self.future = self.goToPointClient.call_async(self.req)
 
     def __filterRawPoint(self, point):
         ''' Фильтрация координат  точки. '''
         x = self.filterX.Filtering(point[0])
         y = self.filterY.Filtering(point[1])
-        # z = self.filterZ.Filtering(point[2])
-        return (x, y, 0.0)
+        return (x, y)
 
     def RawPointCallback(self, point):
         ''' Callback функция по приему необработанных точек. '''
-        filterPoint = self.__filterRawPoint((point.x, point.y, point.z))
-        self.__publishTargetPoint(filterPoint)
+        filterPoint = self.__filterRawPoint((point.x, point.y))
+        self.point = filterPoint
 
 
 def main():
