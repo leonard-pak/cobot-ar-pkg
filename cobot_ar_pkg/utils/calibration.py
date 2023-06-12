@@ -5,35 +5,42 @@ import os
 import glob
 import numpy as np
 import json
-from cv2 import aruco
 
-N = 9
-M = 6
-saveConfPrefix = 'src/cobot-ar-pkg/config/'
-saveConfPostfix = '_static'
-RECALIB = False
+saveConfPrefix = ''
+saveConfPostfix = ''
+saveImagesDir = ''
+
+
+def SaveDirs(confPrefix, confPostfix, imagesDir):
+    ''' Сохранение директорий в глобальных переменных '''
+    global saveConfPostfix, saveConfPrefix, saveImagesDir
+    saveConfPostfix = confPostfix
+    saveConfPrefix = confPrefix
+    saveImagesDir = imagesDir
+
+
+def SaveConfig(data):
+    ''' Сохранение конфигурации '''
+    with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json', 'w') as f:
+        json.dump(data, f)
 
 
 def MakeShot(frame):
     ''' Сохрание кадра. '''
-    if not (os.path.exists('images')):
-        os.mkdir('images')
+    if not (os.path.exists(saveImagesDir)):
+        os.mkdir(saveImagesDir)
     timestamp = time.strftime('%H.%M.%S', time.gmtime(time.time()))
-    cv2.imwrite(f'images/image_{timestamp}.png', frame)
-    print(f'Image save images/image_{timestamp}.png')
+    name = f'{saveImagesDir}/image_{timestamp}.png'
+    cv2.imwrite(name, frame)
+    return name
 
 
-def ChessCalibration():
-    ''' Калибровка по шахматному рисунку. Возвращает матрицу камеры, матрицу камеры с учетом дисторсии и коэфициенты дистории. '''
-    if not RECALIB:
-        with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
-            data = json.load(f)
-            cameraMtx = np.array(data['camera_matrix'])
-            distCoeff = np.array(data['dist_coeff'])
-            undistorCameraMtx = np.array(data['new_camera_matrix'])
-            return cameraMtx, undistorCameraMtx, distCoeff
-
-    images = glob.glob('images/*.png')
+def ChessCalibration(N=9, M=6):
+    '''
+        Калибровка по шахматному рисунку.
+        Возвращает матрицу камеры, матрицу камеры с учетом дисторсии и коэфициенты дистории.
+    '''
+    images = glob.glob(f'{saveImagesDir}/*.png')
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     objp = np.zeros((N*M, 3), np.float32)
@@ -59,58 +66,43 @@ def ChessCalibration():
             cv2.waitKey(250)
     cv2.destroyWindow('calibration')
     if len(objpoints) == 0:
-        print('Not fine chessboard')
         return
     _, cameraMtx, distCoeff, _, _ = cv2.calibrateCamera(
         objpoints, imgpoints, gray.shape[::-1], None, None)
-    h, w = frame.shape[:2]
-    undistorCameraMtx, _ = cv2.getOptimalNewCameraMatrix(
+    h, w = gray.shape[:2]
+    undistorCameraMtx, roi = cv2.getOptimalNewCameraMatrix(
         cameraMtx, distCoeff, (w, h), 1, (w, h))
 
-    print(f'Calibration {validImgs} images SUCCESS!')
-    return cameraMtx, undistorCameraMtx, distCoeff
+    return cameraMtx, distCoeff, undistorCameraMtx, np.array(roi), validImgs
 
 
-def DrawCenter(cameraMatrix):
-    ''' Обозначить центр изображения по внутренней матрици камеры. Возвращает координаты центра в плоскости изображения и в глобальных координатах. '''
-    end = False
+def DrawCenter(cameraMatrix, frame):
+    '''
+        Обозначить центр изображения по внутренней матрици камеры.
+        Возвращает координаты центра в плоскости изображения и в глобальных координатах.
+    '''
     imageCenter = [round(cameraMatrix[0, 2]), round(cameraMatrix[1, 2])]
-    while not end:
-        _, frame = cap.read()
-        cv2.circle(frame, imageCenter, radius=5,
-                   color=(0, 0, 255), thickness=-1)
-        cv2.imshow('Center', frame)
-        c = cv2.waitKey(2)
-        end = (c & 0xFF == ord(' '))
+    cv2.circle(frame, imageCenter, radius=5,
+               color=(0, 0, 255), thickness=-1)
+    cv2.imshow('Center', frame)
+    c = cv2.waitKey(2)
+    if c & 0xFF != ord(' '):
+        return
     cv2.destroyWindow('Center')
-    worldCenter = [
-        float(i) for i in input(f'Add "x y z" for center: ').split(' ')
-    ]
-    return imageCenter, worldCenter
+    return imageCenter
 
 
-def BlobDetect() -> list:
+def BlobDetect(frame) -> list:
     ''' Обнаружение точке. Возвращает список координат точке. '''
-    _, frame = cap.read()
     params = cv2.SimpleBlobDetector_Params()
     # Change thresholds
     params.minThreshold = 10
     params.maxThreshold = 200
     params.thresholdStep = 10
     params.minDistBetweenBlobs = 10
-
-    # Filter by Area.s
-    # params.filterByArea = True
-    # params.minArea = 5
-
     # # Filter by Circularity
     params.filterByCircularity = True
     params.minCircularity = 0.8
-
-    # Filter by Convexity
-    # params.filterByConvexity = True
-    # params.minConvexity = 1
-
     # Filter by Inertia
     params.filterByInertia = True
     params.minInertiaRatio = 0.55
@@ -126,7 +118,7 @@ def BlobDetect() -> list:
     )
 
     cv2.imshow('blob', frame)
-    cv2.waitKey(500)
+    cv2.waitKey(100)
     # cv2.destroyWindow('blob')
     kps = [point.pt for point in keypoints]
 
@@ -145,11 +137,10 @@ def CalcWorldZ(center, point):
     return wz
 
 
-def InputKpWorldCoords(kps, center):
+def InputKpWorldCoords(kps, center, frame):
     ''' Ввод рельных координат для каждой переданной точки. Возвращает список координат точке в глобальной системе отсчета. '''
     worldKps = []
     for kp in kps:
-        _, frame = cap.read()
         cv2.circle(frame, (round(kp[0]), round(kp[1])), radius=5,
                    color=(0, 0, 255), thickness=-1)
         cv2.imshow('Input', frame)
@@ -162,8 +153,8 @@ def InputKpWorldCoords(kps, center):
     return worldKps
 
 
-def MainCalibration(worldPts, imagePts, cameraMtx, distCoeff):
-    ''' Калибровка камеры бля получения вектора поворота и смещения. Возвращает вектор поворота, смещения и коэфициент маштабирования. '''
+def ProjectiveCalibration(worldPts, imagePts, cameraMtx, distCoeff):
+    ''' Калибровка камеры для получения вектора поворота и смещения. Возвращает вектор поворота, смещения и коэфициент маштабирования. '''
     worldPts = np.array(worldPts, dtype=np.float32)
     imagePts = np.array(imagePts, dtype=np.float32)
     _, rvec, tvec = cv2.solvePnP(
@@ -187,32 +178,7 @@ def MainCalibration(worldPts, imagePts, cameraMtx, distCoeff):
     return rvec, tvec, meanScale
 
 
-def Calibrate(frame):
-    ''' Процедура полной калиброки и сохранения данных. '''
-    cameraMtx, undistorCameraMtx, distCoeff = ChessCalibration()
-    imageCenter, worldCenter = DrawCenter(undistorCameraMtx)
-    imagePts = BlobDetect()
-    worldPts = InputKpWorldCoords(imagePts, worldCenter)
-    imagePts.append(imageCenter)
-    worldPts.append(worldCenter)
-    rvec, tvec, scale = MainCalibration(
-        worldPts, imagePts, undistorCameraMtx, distCoeff)
-    data = {
-        "camera_matrix": cameraMtx.tolist(),
-        "new_camera_matrix": undistorCameraMtx.tolist(),
-        "dist_coeff": distCoeff.tolist(),
-        "image_points": imagePts,
-        "world_points": worldPts,
-        "rvec": rvec.tolist(),
-        "tvec": tvec.tolist(),
-        "scale": scale
-    }
-    with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json', 'w') as f:
-        json.dump(data, f)
-    print(f'Calibration SUCCESS!')
-
-
-def FindCoords():
+def FindBlobs(frame):
     ''' Поиск всех точке и расчет их координат. '''
     from numpy.linalg import inv
     with open(saveConfPrefix + 'calibration_data' + saveConfPostfix + '.json') as f:
@@ -221,41 +187,41 @@ def FindCoords():
         R, _ = cv2.Rodrigues(np.array(data['rvec']))
         t = np.array(data['tvec'])
         s = float(data['scale'])
-    kps = BlobDetect()
+    kps = BlobDetect(frame)
+    blobs = []
     for kp in kps:
         uv1 = np.array([[kp[0], kp[1], 1]], dtype=np.float32).T
         suv1 = s * uv1
         xyzC = inv(cameraMtx).dot(suv1)
         xyzW = inv(R).dot(xyzC - t)
-        print(f'Find blob: x-{xyzW[0]} y-{xyzW[1]}')
+        blobs.append(xyzW)
+    return blobs
 
 
-def RuntimeShow(frame):
-    ''' Отображение кадров в реальном времени. '''
-    # gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    # # Find the chess board corners
-    # ret, corners = cv2.findChessboardCorners(gray, (N, M), None)
-    # criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    # # If found, add object points, image points (after refining them)
-    # if ret == True:
-    #     corners2 = cv2.cornerSubPix(
-    #         gray, corners, (11, 11), (-1, -1), criteria)
-    #     cv2.drawChessboardCorners(frame, (N, M), corners2, ret)
+def RuntimeShow(frame, withCalibration=False, N=9, M=6):
+    ''' Отображение кадров. '''
+    if withCalibration:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Find the chess board corners
+        ret, corners = cv2.findChessboardCorners(gray, (N, M), None)
+        criteria = (cv2.TERM_CRITERIA_EPS +
+                    cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        # If found, add object points, image points (after refining them)
+        if ret == True:
+            corners2 = cv2.cornerSubPix(
+                gray, corners, (11, 11), (-1, -1), criteria)
+            cv2.drawChessboardCorners(gray, (N, M), corners2, ret)
+            cv2.imshow('camera_calib', gray)
     cv2.imshow('camera', frame)
+    return cv2.waitKey(2)
 
 
-cap = cv2.VideoCapture(4)
-while True:
-    _, frame = cap.read()
-    RuntimeShow(frame.copy())
-    c = cv2.waitKey(2)
-    if c & 0xFF == ord('q'):
-        break
-    if c & 0xFF == ord('s'):
-        MakeShot(frame)
-    if c & 0xFF == ord('c'):
-        Calibrate(frame)
-    if c & 0xFF == ord('b'):
-        BlobDetect()
-    if c & 0xFF == ord('f'):
-        FindCoords()
+def Undistort(frame, cameraMtx, distCoef, newCamMtx, roi):
+    ''' Компенсация дисторсии и образание кадра '''
+    # undistort
+    dst = cv2.undistort(frame, cameraMtx, distCoef,
+                        None, newCamMtx)
+    # crop the image
+    x, y, w, h = roi
+    dst = dst[y:y+h, x:x+w]
+    return dst
