@@ -6,7 +6,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point
 from cobot_ar_pkg.utils.filters import MedianFilter
-# from manipulator_pkg.srv import GoToPoint
+from leonard_interfaces.srv import GoToPoint
 
 
 class PointProcessing(Node):
@@ -29,22 +29,22 @@ class PointProcessing(Node):
             self.RawPointCallback,
             10
         )
-        self.publisherTargetPoint = self.create_publisher(
-            Point,
-            self.get_parameter('go_to_point_service')
-            .get_parameter_value()
-                .string_value,
-            10
-        )
-        # self.goToPointClient = self.create_client(
-        #     GoToPoint,
+        # self.publisherTargetPoint = self.create_publisher(
+        #     Point,
         #     self.get_parameter('go_to_point_service')
         #     .get_parameter_value()
-        #     .string_value
+        #         .string_value,
+        #     10
         # )
-        # while not self.goToPointClient.wait_for_service(timeout_sec=1.0):
-        #     self.get_logger().info('service not available, waiting again...')
-        # self.req = GoToPoint.Request()
+        self.goToPointClient = self.create_client(
+            GoToPoint,
+            self.get_parameter('go_to_point_service')
+            .get_parameter_value()
+            .string_value
+        )
+        while not self.goToPointClient.wait_for_service(timeout_sec=1.0):
+            self.get_logger().error('service not available, waiting again...')
+        self.req = GoToPoint.Request()
 
         self.timer = self.create_timer(
             1 / self.get_parameter('rps').get_parameter_value().integer_value,
@@ -64,8 +64,25 @@ class PointProcessing(Node):
             'max_error_meters'
         ).get_parameter_value().double_value
 
+        self.future = None
+
+    def __publishTargetPoint(self, point):
+        ''' Публикация обработанной точки. '''
+        msg = Point()
+        msg.x = point[0]
+        msg.y = point[1]
+        # self.publisherTargetPoint.publish(msg)
+        self.req.target = msg
+        self.future = self.goToPointClient.call_async(self.req)
+
+    def __filterRawPoint(self, point):
+        ''' Фильтрация координат  точки. '''
+        x = self.filterX.Filtering(point[0])
+        y = self.filterY.Filtering(point[1])
+        return (x, y)
+
     def Callback(self):
-        if self.point == None:
+        if self.point == None or (self.future != None and not self.future.done()):
             return
         now = time.monotonic()
         if CalcLength(self.point, self.lastPointstamp) >= self.maxError:
@@ -76,21 +93,6 @@ class PointProcessing(Node):
             self.lastTimestamp = now
             self.lastPointstamp = self.point
         self.point = None
-
-    def __publishTargetPoint(self, point):
-        ''' Публикация обработанной точки. '''
-        msg = Point()
-        msg.x = point[0]
-        msg.y = point[1]
-        self.publisherTargetPoint.publish(msg)
-        # self.req.target = msg
-        # self.future = self.goToPointClient.call_async(self.req)
-
-    def __filterRawPoint(self, point):
-        ''' Фильтрация координат  точки. '''
-        x = self.filterX.Filtering(point[0])
-        y = self.filterY.Filtering(point[1])
-        return (x, y)
 
     def RawPointCallback(self, point):
         ''' Callback функция по приему необработанных точек. '''

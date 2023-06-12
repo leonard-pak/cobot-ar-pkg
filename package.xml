@@ -7,7 +7,7 @@
   <maintainer email="leopak2000@gmail.com">Leonard Pak</maintainer>
   <license>Apache 2.0</license>
 
-  <exec_depend>manipulator_pkg</exec_depend>
+  <exec_depend>leonard_interfaces</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
