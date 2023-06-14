@@ -55,8 +55,8 @@ class PointProcessing(Node):
         self.filterY = MedianFilter(11)
 
         self.point = None
-        self.lastTimestamp = time.monotonic()
-        self.lastPointstamp = (0.0, 0.0)
+        self.lastTimestamp = 0.0
+        self.lastPointstamp = None
         self.timeWindow = self.get_parameter(
             'window_time_sec'
         ).get_parameter_value().double_value
@@ -82,10 +82,14 @@ class PointProcessing(Node):
         return (x, y)
 
     def Callback(self):
+        ''' Callback функция таймера. '''
         if self.point == None or (self.future != None and not self.future.done()):
             return
         now = time.monotonic()
-        if CalcLength(self.point, self.lastPointstamp) >= self.maxError:
+        if self.lastTimestamp == 0.0:
+            self.lastTimestamp = now
+            self.lastPointstamp = self.point
+        elif CalcLength(self.point, self.lastPointstamp) >= self.maxError:
             self.lastTimestamp = now
             self.lastPointstamp = self.point
         elif now - self.lastTimestamp > self.timeWindow:
