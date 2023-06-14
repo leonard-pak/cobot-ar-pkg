@@ -4,7 +4,7 @@
         fixed_frame_topic: "fixed_camera_frame"
         info_frame_topic: "displaying_info"
         raw_point_topic: "target_point"
-        rps: 10
+        rps: 7
 fixed_camera:
     ros__parameters:
         camera_idx: 4

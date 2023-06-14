@@ -119,15 +119,29 @@ def DecorateAverageTimeExecute(func):
 
 
 def DecorateAverageAbsoluteError(func):
-    ''' Декоратор подсчета ошибкивычисления координат '''
+    ''' Декоратор подсчета ошибки вычисления координат '''
     buffer = []
-    realPoint = (0.463, 0.158)
+    realPoint = (0.806, 0.363)
 
     def wrapper(*args, **kwargs):
         returnVal = func(*args, **kwargs)
         calcPoint = (returnVal[0], returnVal[1])
         buffer.append(CalcLength(realPoint, calcPoint))
         get_logger('UTILS').warning(
-            f'Error: {np.average(buffer)}')
+            f'Error mm: {np.average(buffer) * 100}')
+        return returnVal
+    return wrapper
+
+
+def DecorateAbsoluteError(func):
+    ''' Декоратор подсчета ошибки вычисления координат '''
+    realPoint = (0.463, 0.158)
+
+    def wrapper(*args, **kwargs):
+        returnVal = func(*args, **kwargs)
+        calcPoint = (returnVal[0], returnVal[1])
+        error = CalcLength(realPoint, calcPoint)
+        get_logger('UTILS').warning(
+            f'Error mm: {error * 1000}')
         return returnVal
     return wrapper
