@@ -20,6 +20,7 @@ class PointProcessing(Node):
             ('window_time_sec',),
             ('rps',),
             ('max_error_meters',),
+            ('filter_memory_size',),
         ])
         self.subscriberRawPoint = self.create_subscription(
             Point,
@@ -50,9 +51,11 @@ class PointProcessing(Node):
             1 / self.get_parameter('rps').get_parameter_value().integer_value,
             self.Callback
         )
-
-        self.filterX = MedianFilter(11)
-        self.filterY = MedianFilter(11)
+        filterSize = self.get_parameter(
+            'filter_memory_size'
+        ).get_parameter_value().integer_value
+        self.filterX = MedianFilter(filterSize)
+        self.filterY = MedianFilter(filterSize)
 
         self.point = None
         self.lastTimestamp = 0.0
@@ -85,6 +88,7 @@ class PointProcessing(Node):
         ''' Callback функция таймера. '''
         if self.point == None or (self.future != None and not self.future.done()):
             return
+
         now = time.monotonic()
         if self.lastTimestamp == 0.0:
             self.lastTimestamp = now

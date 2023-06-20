@@ -22,3 +22,4 @@ point_processing:
         go_to_point_service: "go_to_point"
         max_error_meters: 0.01
         window_time_sec: 1.5
+        filter_memory_size: 11
