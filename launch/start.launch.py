@@ -11,13 +11,6 @@ def generate_launch_description():
         'config.yaml'
     )
 
-    unityEndpoint = Node(
-        package="ros_tcp_endpoint",
-        executable="default_server_endpoint",
-        name="server_endpoint",
-        output="screen",
-    )
-
     calibration = Node(
         package="cobot_ar_pkg",
         executable="camera_calibration",
@@ -52,9 +45,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # unityEndpoint,
         # calibration,
         framesProcessing,
         pointProcessing,
-        # fixedCamera,
+        fixedCamera,
     ])
